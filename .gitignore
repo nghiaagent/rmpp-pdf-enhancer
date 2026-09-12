@@ -31,3 +31,4 @@ env/
 *.png
 !docs/images/**
 !tests/fixtures/**
+!assets/benchmark_illustrations/**
