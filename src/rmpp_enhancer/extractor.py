@@ -56,23 +56,38 @@ def _load_image_from_zip(zip_path: str, member_name: str) -> Image.Image:
 def _load_image_from_pdf(pdf_path: str, page_idx: int) -> Image.Image:
     doc = pymupdf.open(pdf_path)
     page = doc[page_idx]
-    imgs = page.get_images()
 
-    if imgs:
-        # Extract direct image stream
-        xref = imgs[0][0]
-        base_img = doc.extract_image(xref)
-        img_bytes = base_img["image"]
-        doc.close()
-        with Image.open(io.BytesIO(img_bytes)) as im:
-            return im.copy()
+    # Check if page is a pure single full-page scan without text or rotation
+    imgs = page.get_images()
+    if len(imgs) == 1 and page.rotation == 0:
+        text = page.get_text().strip()
+        if not text:
+            img_rects = page.get_image_rects(imgs[0][0])
+            if img_rects:
+                r = img_rects[0]
+                # Covers at least 85% of page area
+                if r.width >= 0.85 * page.rect.width and r.height >= 0.85 * page.rect.height:
+                    base_img = doc.extract_image(imgs[0][0])
+                    if base_img["width"] >= 600 and base_img["height"] >= 600:
+                        img_bytes = base_img["image"]
+                        doc.close()
+                        with Image.open(io.BytesIO(img_bytes)) as im:
+                            return im.copy()
+
+    # For all vector, document, article, textbook, and multi-element PDF pages:
+    # Render the complete page (text, fonts, math, figures, vectors) at Option A resolution
+    w_pt, h_pt = page.rect.width, page.rect.height
+    if h_pt >= w_pt:
+        # Portrait: target height 2160, width max 1620
+        scale = min(1620.0 / w_pt, 2160.0 / h_pt)
     else:
-        # Fallback: render vector / text PDF page at native 229 DPI (matrix = 229 / 72)
-        zoom = 229.0 / 72.0
-        mat = pymupdf.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat, alpha=False)
-        doc.close()
-        return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        # Landscape: target width 2160, height max 1620
+        scale = min(2160.0 / w_pt, 1620.0 / h_pt)
+
+    mat = pymupdf.Matrix(scale, scale)
+    pix = page.get_pixmap(matrix=mat, alpha=False)
+    doc.close()
+    return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
 
 def extract_from_directory(dir_path: str) -> ExtractedDocument:
@@ -176,7 +191,7 @@ def extract_from_pdf(pdf_path: str) -> ExtractedDocument:
     chapters: List[Tuple[str, int]] = []
     for item in toc:
         if len(item) >= 3:
-            ch_title = item[1]
+            ch_title = str(item[1]).strip()
             p_num = int(item[2])
             chapters.append((ch_title, p_num))
 
