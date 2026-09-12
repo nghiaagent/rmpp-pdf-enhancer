@@ -96,27 +96,47 @@ For full mathematical formulas, color science curves, and particle physics, see 
 
 ---
 
-## Installation & Setup with `uv`
+## Installation & Execution
 
-This project is built and packaged natively with **[`uv`](https://github.com/astral-sh/uv)**, the ultra-fast Python package manager:
+`rmpp-pdf-enhancer` supports all standard Python installation methods:
 
+### Option A: Direct Execution with `uvx` (Zero Install Needed)
+Run directly from GitHub without cloning or managing environments:
 ```bash
-# Clone the repository
+uvx --from git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git rmpp-enhance "Document.pdf"
+```
+
+### Option B: Install Globally via `uv tool`
+Install as an isolated, persistent system-wide CLI command:
+```bash
+# Directly from GitHub:
+uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
+
+# Or from local clone:
+uv tool install .
+```
+Now `rmpp-enhance` and `rmpp-pdf-enhancer` are permanently in your `$PATH`.
+
+### Option C: Standard `pip` Installation
+Works with any standard Python environment or virtualenv:
+```bash
+# From GitHub:
+pip install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
+
+# Or from local clone:
+pip install .
+```
+
+### Option D: Local Development with `uv`
+```bash
 git clone https://github.com/nghiaagent/rmpp-pdf-enhancer.git
 cd rmpp-pdf-enhancer
 
-# Sync virtual environment and dependencies in milliseconds
+# Sync virtualenv and dependencies in milliseconds
 uv sync
-```
 
-You can run the CLI immediately via `uv run`:
-```bash
+# Run via uv
 uv run rmpp-enhance --help
-```
-
-Or install it globally as a standalone tool in your environment:
-```bash
-uv tool install .
 ```
 
 ---
