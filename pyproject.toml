@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rmpp-pdf-enhancer"
+version = "0.1.0"
+description = "High-performance manga, comic, and document PDF enhancer tuned for reMarkable Paper Pro Canvas Color e-paper display"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Nghia Nguyen", email = "nghia6a1@gmail.com"}
+]
+keywords = ["remarkable", "remarkable-paper-pro", "rmpp", "e-ink", "manga", "pdf", "color-correction", "comic"]
+dependencies = [
+    "pillow>=10.0.0",
+    "numpy>=1.22.0",
+    "img2pdf>=0.5.0",
+    "pymupdf>=1.22.0",
+    "pikepdf>=8.0.0",
+]
+
+[project.scripts]
+rmpp-enhance = "rmpp_enhancer.cli:main"
+rmpp-pdf-enhancer = "rmpp_enhancer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"rmpp_enhancer.profiles" = ["*.cube"]
