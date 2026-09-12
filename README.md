@@ -131,6 +131,24 @@ options:
 
 ---
 
+## Benchmarking and tablet screen comparisons
+
+The repository includes scripts to generate native $2160 \times 1620$ side-by-side landscape comparison PDFs ($1080 \times 1620$ original sRGB on the left, $1080 \times 1620$ compensated RMPP on the right) formatted specifically for photographing directly on the reMarkable Paper Pro screen:
+
+- **Illustration benchmark & calibration target**:
+  ```bash
+  uv run python scripts/generate_illustration_comparisons.py
+  ```
+  Generates `Illustration_PaperPro_Comparison.pdf` containing side-by-side comparisons of standard calibration targets (CMYK, RGB, Grayscale ramps, SWOP colors, and resolution line tests), digital character illustrations (Genshin Impact), anime landscapes (Yuvalkirstain anime dataset), and high-gamut pop-art illustrations (Boshik dataset).
+
+- **MIT-Adobe FiveK benchmark**:
+  ```bash
+  uv run python scripts/generate_mit_comparisons.py
+  ```
+  Generates `MIT_PaperPro_Comparison.pdf` evaluating 5 photographic scenes across skin tones, deep shadow recovery, skies, flora, and intricate foliage.
+
+---
+
 ## Testing
 
 Run the automated test suite with `uv`:
