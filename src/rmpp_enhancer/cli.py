@@ -21,19 +21,15 @@ from rmpp_enhancer.pipeline import (
 )
 
 
-def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> List[str]:
+def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
     page_idx, page_item, work_dir, config = args
     img = page_item.load_image()
-    processed_imgs = process_image(img, config)
+    processed_img = process_image(img, config)
 
-    saved_paths = []
-    for sub_idx, p_img in enumerate(processed_imgs):
-        dst_name = f"page_{page_idx:05d}_{sub_idx}.jpg"
-        dst_path = os.path.join(work_dir, dst_name)
-        save_page_jpeg(p_img, dst_path, config)
-        saved_paths.append(dst_path)
-
-    return saved_paths
+    dst_name = f"page_{page_idx:05d}.jpg"
+    dst_path = os.path.join(work_dir, dst_name)
+    save_page_jpeg(processed_img, dst_path, config)
+    return dst_path
 
 
 def enhance_document(
@@ -76,16 +72,12 @@ def enhance_document(
     print(f"⚡ Processing {total_input_pages} pages with {workers} workers...")
     print(f"   Settings: Quality Q{config.quality}, Subsampling={'4:4:4' if config.subsampling == 0 else '4:2:0'}")
     print(f"   LUT Correction: {'ON' if config.color_correction else 'OFF'} | Edge Inking: {'ON' if config.edge_inking else 'OFF'}")
-    if config.split_spreads:
-        print(f"   Split Spreads: ON ({config.spread_direction.upper()})")
 
     tasks = [(i, page_item, work_dir, config) for i, page_item in enumerate(doc.pages)]
 
     t0 = time.time()
-    all_jpegs: List[str] = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        for result in executor.map(process_single_page, tasks):
-            all_jpegs.extend(result)
+        all_jpegs = list(executor.map(process_single_page, tasks))
 
     proc_duration = time.time() - t0
     print(f"✓ Processed {len(all_jpegs)} output pages in {proc_duration:.2f}s ({proc_duration / len(all_jpegs):.3f}s/page)")
@@ -117,8 +109,6 @@ def main():
     parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100), tuned to 82 for fast cloud sync")
     parser.add_argument("--subsampling", type=int, choices=[0, 2], default=0, help="Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file)")
     parser.add_argument("-w", "--workers", type=int, default=min(8, os.cpu_count() or 4), help="Number of concurrent worker threads")
-    parser.add_argument("--split-spreads", action="store_true", help="Auto-split wide landscape double-page spreads into portrait pages")
-    parser.add_argument("--spread-dir", choices=["rtl", "ltr"], default="rtl", help="Reading direction for spread splitting: rtl (manga) or ltr (western)")
     parser.add_argument("--no-lut", action="store_true", help="Disable 3D LUT Canvas Color compensation")
     parser.add_argument("--no-ink", action="store_true", help="Disable bilateral edge-directed inking filter")
     parser.add_argument("--lut-file", help="Custom .cube 3D LUT profile path")
@@ -132,8 +122,6 @@ def main():
         subsampling=args.subsampling,
         color_correction=not args.no_lut,
         edge_inking=not args.no_ink,
-        split_spreads=args.split_spreads,
-        spread_direction=args.spread_dir,
         lut_path=args.lut_file,
     )
 

@@ -5,7 +5,6 @@ Features:
 - Exact 1:1 pixel mapping for 11.8" Gallery 3 Canvas Color screen (2160 x 1620 @ 229 PPI).
 - Calibrated 3D LUT inverse compensation (OKLab v3 color space).
 - Bilateral edge-directed inking filter to deepen dialogue line-art and counteract pigment dithering.
-- Dual-page spread auto-detection and splitting (RTL manga / LTR western).
 - Tuned JPEG compression for fast cloud sync and minimal storage.
 """
 
@@ -24,8 +23,6 @@ class EnhancerConfig:
     subsampling: int = 0            # 0 = 4:4:4 (full chroma), 2 = 4:2:0
     color_correction: bool = True   # Apply OKLab v3 3D LUT
     edge_inking: bool = True        # Apply bilateral edge-directed inking
-    split_spreads: bool = False     # Split wide double spreads into 2 portrait pages
-    spread_direction: str = "rtl"   # "rtl" (manga: right first) or "ltr" (western: left first)
     lut_path: Optional[str] = None  # Path to .cube LUT file (None = use bundled)
     target_width: int = 1620        # RMPP portrait width
     target_height: int = 2160       # RMPP portrait height
@@ -130,54 +127,27 @@ def apply_edge_directed_inking(img: Image.Image) -> Image.Image:
     return res.filter(ImageFilter.UnsharpMask(radius=1.0, percent=115, threshold=3))
 
 
-def process_image(img: Image.Image, config: EnhancerConfig) -> List[Image.Image]:
-    """
-    Runs an image through the full RMPP processing pipeline.
-    May return 1 or 2 images (if wide spread auto-splitting is active).
-    """
+def process_image(img: Image.Image, config: EnhancerConfig) -> Image.Image:
+    """Runs a single page image through the full RMPP processing pipeline."""
     rgb = prepare_rgb(img)
 
-    # Check for wide double-page spread splitting
-    images_to_process: List[Image.Image] = []
-    w, h = rgb.size
-    is_wide_spread = config.split_spreads and (w > 1.25 * h)
+    # 1. Scale to Option A Geometry (@ 229 PPI)
+    scaled = scale_to_rmpp_geometry(rgb, config)
 
-    if is_wide_spread:
-        half_w = w // 2
-        left_half = rgb.crop((0, 0, half_w, h))
-        right_half = rgb.crop((half_w, 0, w, h))
-
-        if config.spread_direction.lower() == "rtl":
-            # Manga / Japanese comic: read right page then left page
-            images_to_process = [right_half, left_half]
-        else:
-            # Western comic: read left page then right page
-            images_to_process = [left_half, right_half]
-    else:
-        images_to_process = [rgb]
-
-    results: List[Image.Image] = []
+    # 2. 3D LUT Color Calibration
     pil_lut = load_3d_lut(config.lut_path) if config.color_correction else None
+    if config.color_correction and pil_lut is not None:
+        corrected = scaled.filter(pil_lut)
+    else:
+        corrected = scaled
 
-    for im in images_to_process:
-        # 1. Scale to Option A Geometry (@ 229 PPI)
-        scaled = scale_to_rmpp_geometry(im, config)
+    # 3. Bilateral Edge Inking Filter
+    if config.edge_inking:
+        final_img = apply_edge_directed_inking(corrected)
+    else:
+        final_img = corrected
 
-        # 2. 3D LUT Color Calibration
-        if config.color_correction and pil_lut is not None:
-            corrected = scaled.filter(pil_lut)
-        else:
-            corrected = scaled
-
-        # 3. Bilateral Edge Inking Filter
-        if config.edge_inking:
-            final_img = apply_edge_directed_inking(corrected)
-        else:
-            final_img = corrected
-
-        results.append(final_img)
-
-    return results
+    return final_img
 
 
 def save_page_jpeg(img: Image.Image, dst_path: str, config: EnhancerConfig) -> str:
