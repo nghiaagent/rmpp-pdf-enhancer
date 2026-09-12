@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "rmpp-pdf-enhancer"
 version = "0.1.0"
-description = "High-performance comic, manga, and document PDF optimizer engineered for reMarkable Paper Pro Canvas Color"
+description = "Universal color-calibrated PDF, document, textbook, and comic optimizer engineered for reMarkable Paper Pro Canvas Color"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 authors = [
     {name = "Antigravity (Google DeepMind)"}
 ]
-keywords = ["remarkable", "remarkable-paper-pro", "rmpp", "canvas-color", "e-ink", "manga", "pdf", "color-correction", "comic"]
+keywords = ["remarkable", "remarkable-paper-pro", "rmpp", "canvas-color", "e-ink", "pdf", "color-correction", "document", "textbook", "magazine", "comic", "manga"]
 dependencies = [
     "pillow>=10.0.0",
     "numpy>=1.22.0",
