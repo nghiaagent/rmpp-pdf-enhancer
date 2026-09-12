@@ -25,7 +25,7 @@ Input PDF / archive / scans (.pdf, .cbz, .zip, folder)
 [2] Scaling (1:1 pixel mapping to RMPP at 2160px height @ 229 PPI Lanczos)
   │
   ▼
-[3] Calibrated 3D LUT (OKLab Canvas Color compensation)
+[3] Calibrated 3D LUT 
     ├── Monotonic Hermite spline shadow lift (L < 0.35)
     ├── Cool-tone (cyan/teal/blue) luminance equalization
     ├── Warm skin-tone / highlight soft protection ceiling
@@ -39,13 +39,13 @@ Input PDF / archive / scans (.pdf, .cbz, .zip, folder)
     └── Micro-contrast unsharp mask (r=1.0, 115%)
   │
   ▼
-[5] Tuned fast-sync JPEG compression (Q82, 4:4:4 chroma, 229 DPI)
+[5] Customised JPEG compression (Q82, 4:4:4 chroma, 229 DPI)
   │
   ▼
-[6] Direct PDF injection (zero-transcode img2pdf + PyMuPDF outline TOC)
+[6] PDF injection (zero-transcode img2pdf + PyMuPDF outline TOC)
 ```
 
-For full mathematical formulas, color science curves, and particle physics, see the [Architecture and color science guide](docs/architecture.md).
+For more rationale, see [Architecture and color science guide](docs/architecture.md).
 
 ---
 
@@ -58,13 +58,13 @@ For full mathematical formulas, color science curves, and particle physics, see 
 ## Installation and execution
 
 ### Option A: Direct execution with `uvx`
-Run directly from GitHub without cloning or managing environments:
+Run directly from GitHub:
 ```bash
 uvx --from git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git rmpp-pdf-enhancer "Document.pdf"
 ```
 
-### Option B: Install globally via `uv tool`
-Install as an isolated, persistent system-wide CLI command:
+### Option B: Install via `uv tool`
+Install as a persistent system-wide CLI command:
 ```bash
 # Directly from GitHub:
 uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
@@ -72,7 +72,6 @@ uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
 # Or from local clone:
 uv tool install .
 ```
-Now `rmpp-pdf-enhancer` is permanently in your `$PATH`.
 
 ---
 
@@ -81,23 +80,31 @@ Now `rmpp-pdf-enhancer` is permanently in your `$PATH`.
 ### 1. Optimize an existing PDF document
 ```bash
 uv run rmpp-pdf-enhancer "Linear_Algebra_Textbook.pdf"
+# If installed as an CLI
+rmpp-pdf-enhancer "Linear_Algebra_Textbook.pdf"
 ```
-Produces `Linear_Algebra_Textbook_PaperPro_Optimized.pdf` with enhanced charts, clean margins, and sharp formulas.
-Running again in the same directory safely skips already-generated files without re-processing them (override with `-f` / `--force`).
+Produces `Linear_Algebra_Textbook_PaperPro_Optimized.pdf`.
+Running again in the same directory will skip already-generated files (override with `-f` / `--force`).
 
 ### 2. Optimize a comic archive (`.cbz` or `.zip`)
 ```bash
 uv run rmpp-pdf-enhancer "OnePiece_Vol100.cbz"
+# If installed as an CLI
+rmpp-pdf-enhancer "OnePiece_Vol100.cbz"
 ```
 
 ### 3. Process a folder of images
 ```bash
-uv run rmpp-pdf-enhancer ./scanned_pages/ -o "MeetingNotes_Enhanced.pdf"
+uv run rmpp-pdf-enhancer ./scanned_pages/
+# If installed as an CLI
+rmpp-pdf-enhancer ./scanned_pages/
 ```
 
 ### 4. Batch process a directory
 ```bash
-uv run rmpp-pdf-enhancer ./DocumentsFolder/ --batch -o ./RMPP_Ready/
+uv run rmpp-pdf-enhancer ./DocumentsFolder/ --batch
+# If installed as an CLI
+rmpp-pdf-enhancer ./DocumentsFolder/ --batch
 ```
 
 ---
@@ -110,7 +117,7 @@ usage: rmpp-pdf-enhancer [-h] [-o OUTPUT] [-q QUALITY] [--subsampling {0,2}]
                          [--lut-file LUT_FILE] [--batch] [-v]
                          inputs [inputs ...]
 
-reMarkable Paper Pro Canvas Color universal PDF, document, textbook and manga enhancer
+reMarkable Paper Pro PDF enhancer
 
 positional arguments:
   inputs                Input file(s): .pdf, .cbz, .zip, or directory of images/scans
@@ -118,11 +125,11 @@ positional arguments:
 options:
   -h, --help            Show this help message and exit
   -o, --output OUTPUT   Output PDF file path or destination directory (default: None)
-  -q, --quality QUALITY JPEG quality (1-100), tuned to 82 for fast cloud sync (default: 82)
+  -q, --quality QUALITY JPEG quality (1-100, default 82)
   --subsampling {0,2}   Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file) (default: 0)
   -w, --workers WORKERS Number of concurrent worker threads (default: CPU count)
   -f, --force           Force overwrite if output file already exists, and re-process already optimized files (default: False)
-  --no-lut              Disable 3D LUT Canvas Color compensation (default: False)
+  --no-lut              Disable included LUT compensation (default: False)
   --no-ink              Disable bilateral edge-directed inking filter (default: False)
   --lut-file LUT_FILE   Custom .cube 3D LUT profile path (default: None)
   --batch               Treat directory contents as separate sub-documents/chapters (default: False)
@@ -133,13 +140,11 @@ options:
 
 ## Benchmarking and tablet screen comparisons
 
-The repository includes scripts to generate native $2160 \times 1620$ side-by-side landscape comparison PDFs ($1080 \times 1620$ original sRGB on the left, $1080 \times 1620$ compensated RMPP on the right) formatted specifically for photographing directly on the reMarkable Paper Pro screen:
+The repository includes scripts to generate comparison PDFs:
 
-- **Illustration benchmark & calibration target**:
-  ```bash
-  uv run python scripts/generate_illustration_comparisons.py
-  ```
-  Generates `Illustration_PaperPro_Comparison.pdf` containing side-by-side comparisons of standard calibration targets (CMYK, RGB, Grayscale ramps, SWOP colors, and resolution line tests), digital character illustrations (Genshin Impact), anime landscapes (Yuvalkirstain anime dataset), and high-gamut pop-art illustrations (Boshik dataset).
+```bash
+uv run python scripts/generate_illustration_comparisons.py
+```
 
 ---
 

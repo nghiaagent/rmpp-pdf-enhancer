@@ -107,16 +107,16 @@ def enhance_document(
 def main():
     parser = argparse.ArgumentParser(
         prog="rmpp-pdf-enhancer",
-        description="reMarkable Paper Pro Canvas Color universal PDF, document, textbook and manga enhancer",
+        description="reMarkable Paper Pro PDF enhancer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("inputs", nargs="+", help="Input file(s): .pdf, .cbz, .zip, or directory of images/scans")
     parser.add_argument("-o", "--output", help="Output PDF file path (or destination directory if multiple inputs)")
-    parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100), tuned to 82 for fast cloud sync")
+    parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100, default %(default)s)")
     parser.add_argument("--subsampling", type=int, choices=[0, 2], default=0, help="Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file)")
     parser.add_argument("-w", "--workers", type=int, default=min(8, os.cpu_count() or 4), help="Number of concurrent worker threads")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite if output file already exists, and re-process already optimized files")
-    parser.add_argument("--no-lut", action="store_true", help="Disable 3D LUT Canvas Color compensation")
+    parser.add_argument("--no-lut", action="store_true", help="Disable included LUT compensation")
     parser.add_argument("--no-ink", action="store_true", help="Disable bilateral edge-directed inking filter")
     parser.add_argument("--lut-file", help="Custom .cube 3D LUT profile path")
     parser.add_argument("--batch", action="store_true", help="Treat directory contents as separate sub-documents/chapters")
