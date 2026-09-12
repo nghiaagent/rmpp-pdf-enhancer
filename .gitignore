@@ -29,4 +29,5 @@ env/
 *.jpg
 *.jpeg
 *.png
+!docs/images/**
 !tests/fixtures/**
