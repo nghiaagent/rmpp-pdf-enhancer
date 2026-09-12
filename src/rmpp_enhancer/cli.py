@@ -101,10 +101,10 @@ def enhance_document(
 def main():
     parser = argparse.ArgumentParser(
         prog="rmpp-enhance",
-        description="reMarkable Paper Pro Canvas Color Manga & Document PDF Enhancer",
+        description="reMarkable Paper Pro Canvas Color Universal PDF, Document, Textbook & Manga Enhancer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("inputs", nargs="+", help="Input file(s), .cbz, .zip, .pdf, or directory of images")
+    parser.add_argument("inputs", nargs="+", help="Input file(s): .pdf, .cbz, .zip, or directory of images/scans")
     parser.add_argument("-o", "--output", help="Output PDF file path (or destination directory if multiple inputs)")
     parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100), tuned to 82 for fast cloud sync")
     parser.add_argument("--subsampling", type=int, choices=[0, 2], default=0, help="Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file)")
@@ -112,7 +112,7 @@ def main():
     parser.add_argument("--no-lut", action="store_true", help="Disable 3D LUT Canvas Color compensation")
     parser.add_argument("--no-ink", action="store_true", help="Disable bilateral edge-directed inking filter")
     parser.add_argument("--lut-file", help="Custom .cube 3D LUT profile path")
-    parser.add_argument("--batch", action="store_true", help="Treat directory contents as separate sub-comics/chapters")
+    parser.add_argument("--batch", action="store_true", help="Treat directory contents as separate sub-documents/chapters")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
@@ -140,7 +140,7 @@ def main():
         print("No valid input files found.")
         sys.exit(1)
 
-    print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro Optimizer")
+    print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro Universal Optimizer")
     print(f"Total targets to process: {len(targets)}")
 
     for target in targets:

@@ -22,17 +22,17 @@ To form a color, complex multi-phase voltage waveforms drive the physical partic
 2. **Pigment Absorption Asymmetry**:
    - Reflective White ($W$) has a maximum reflectivity of $\approx 35\text{--}40\%$.
    - Cyan and Yellow particles absorb ambient light much more aggressively in the lower-midtones than on transmissive screens.
-   - Consequently, dark tones ($L < 0.35$ in OKLab) collapse into a uniform black pool, completely crushing comic shadows, hair contours, and dark clothing textures.
-3. **Pigment Diffusion at Edges**: Transitions between high-density black ink lines and colored backgrounds suffer from physical particle blending. Without edge pre-emphasis, fine dialogue letters and pencil strokes appear fuzzy and low-contrast.
+    - Consequently, dark tones ($L < 0.35$ in OKLab) collapse into a uniform black pool, crushing dark diagram lines, photo textures, dark clothing, and shadow details.
+3. **Pigment Diffusion at Edges**: Transitions between high-density black ink lines and colored backgrounds suffer from physical particle blending. Without edge pre-emphasis, small typography, math formulas, figure legends, and pencil strokes appear fuzzy and low-contrast.
 
 ---
 
 ## 2. The Color Calibration Pipeline
 
-To counteract these physical shortcomings without washing out vibrant comic hues, Antigravity engineered a 6-stage mathematical compensator.
+To counteract these physical shortcomings across all digital documents—including textbooks, research papers, slide decks, magazines, and comics—Antigravity engineered a 6-stage mathematical compensator.
 
 ```
-Input RGB Scan
+Input PDF Page / Document Image
       │
       ▼
 [1] Alpha Flattening ───► [Composite over #FFFFFF Pure Paper White]
@@ -41,10 +41,10 @@ Input RGB Scan
 [2] 1:1 Pixel Mapping ──► [Lanczos to 2160px Height @ 229 PPI (Option A)]
       │
       ▼
-[3] OKLab v3 3D LUT  ──► [Shadow Lift + Cool Equalization + Skin Guard]
+[3] OKLab v3 3D LUT  ──► [Shadow Lift + Cool Equalization + Skin/Highlight Guard]
       │
       ▼
-[4] Edge Inking Filter ─► [Luminance-Directed Inking & Halos]
+[4] Edge Inking Filter ─► [Luminance-Directed Inking & Halos for Type & Lines]
       │
       ▼
 [5] Fast-Sync Encoding ─► [JPEG Q82, Subsampling=0 (4:4:4), 229 DPI]
@@ -54,10 +54,10 @@ Input RGB Scan
 ```
 
 ### Stage 1: Alpha Composite over Pure White
-Many digital comic scans and translated panels contain 32-bit RGBA channels with transparent borders or dialogue boxes. Naive conversion to RGB often drops the alpha channel to black `#000000`. We composite transparent pixels over pure reflective white (`#FFFFFF`) to match the Paper Pro's white particle baseline.
+Many digital PDFs, presentations, and scans contain 32-bit RGBA channels with transparent borders, transparent charts, or dialogue boxes. Naive conversion to RGB often drops the alpha channel to black `#000000`. We composite transparent pixels over pure reflective white (`#FFFFFF`) to match the Paper Pro's white particle baseline.
 
 ### Stage 2: Option A Geometry Scaling
-The Paper Pro CPU uses a simple runtime bilinear scalar when viewing PDFs with arbitrary resolutions. Bilinear scaling softens crisp ink lines and introduces jagged scaling moiré.
+The Paper Pro CPU uses a simple runtime bilinear scalar when viewing PDFs with arbitrary resolutions. Bilinear scaling softens crisp typography and introduces jagged scaling moiré.
 - **Portrait ($h \ge w$)**: Proportionally scaled via 8-tap Lanczos so that the height matches the screen's exact **2160 px** vertical dimension ($w \le 1620\text{ px}$).
 - **Landscape ($w > h$)**: Scaled to **2160 px** width or **1620 px** height.
 - **Density Metadata**: Stamped with exact native density `(229, 229) DPI`.
@@ -68,26 +68,26 @@ The core color grading operates in **OKLab**, a perceptually uniform color space
 1. **Monotonic Hermite Shadow De-Crush**:
    For lightness $L < 0.35$, shadows are lifted using a cubic Hermite spline:
    $$\Delta L(L) = \alpha \cdot (1 - \frac{L}{0.35})^2 \cdot (1 + 2\frac{L}{0.35})$$
-   This smoothly elevates dark details out of the crushing threshold without altering black ink points ($L=0$) or blowing out midtone contrast.
+   This smoothly elevates dark details, plot lines, and photo textures out of the crushing threshold without altering black ink points ($L=0$) or blowing out midtone contrast.
 2. **Cool-Tone Luminance Equalization**:
-   Cyan, teal, and blue pigments reflect significantly less ambient light than yellow and magenta. For cool hues ($\text{atan2}(b, a) \in [140^\circ, 260^\circ]$), lightness is boosted by up to $+18\%$ to prevent blue skies, denim, and shadows from appearing murky gray-black.
-3. **Warm Skin-Tone Protection**:
-   Comic character skin tones occupy the warm quadrant ($a > 0, b > 0$). A soft saturation ceiling prevents the color lift from shifting delicate peach and porcelain tones into saturated orange.
-4. **Speech-Bubble Pure-White Acceleration**:
-   Near-whites ($L > 0.95$ and chroma $< 0.04$) are accelerated toward pure $255$ ($L=1.0$). On reflective e-paper, any non-white background dither forces colored particles into speech bubbles. Forcing pure white ensures 100% white reflective particles, maximizing readability and contrast.
+   Cyan, teal, and blue pigments reflect significantly less ambient light than yellow and magenta. For cool hues ($\text{atan2}(b, a) \in [140^\circ, 260^\circ]$), lightness is boosted by up to $+18\%$ to prevent blue chart bars, technical diagrams, and skies from appearing murky gray-black.
+3. **Warm Tone & Highlight Protection**:
+   Skin tones and warm photographic elements occupy the warm quadrant ($a > 0, b > 0$). A soft saturation ceiling prevents the color lift from shifting delicate hues into oversaturated orange.
+4. **Speech-Bubble & Margin Pure-White Acceleration**:
+   Near-whites ($L > 0.95$ and chroma $< 0.04$) are accelerated toward pure $255$ ($L=1.0$). On reflective e-paper, any slightly off-white page background or speech bubble triggers active particle dithering, dotting the page with colored pigment specks. Forcing pure white ensures 100% white reflective particles, maximizing ambient contrast and legibility.
 
 ### Stage 4: Bilateral Edge-Directed Inking Filter
 Physical pigment particles dither non-linearly across sharp edges. We apply a dual-threshold spatial filter:
 1. Detect edge boundaries via Laplacian gradient operator $\nabla I$.
-2. Segment edges into dark ink strokes ($L < 0.40$) and light surround ($L \ge 0.40$).
-3. Multiply dark strokes by $0.75$ (deepening the core ink line).
+2. Segment edges into dark ink strokes/typography ($L < 0.40$) and light surround ($L \ge 0.40$).
+3. Multiply dark strokes by $0.75$ (deepening the core text and line-art).
 4. Multiply light surrounds by $1.10$ (creating an optical halo that repels particle bleed).
 5. Apply a high-radius micro-contrast unsharp mask ($r=1.0\text{ px}$, $115\%$).
 
 ### Stage 5: Tuned Fast-Sync JPEG Compression
-Digital comic archives frequently employ either bloated uncompressed PNGs or $Q95\text{--}100$ JPEGs, creating $300\text{ MB}+$ PDFs. Transferring these over reMarkable Cloud or USB-C is sluggish.
+Heavy PDFs, technical manuals, and scanned books frequently employ bloated uncompressed images or $Q95\text{--}100$ JPEGs, creating $300\text{ MB}+$ files. Transferring these over reMarkable Cloud or USB-C is sluggish.
 - **Tuned Default ($Q82$, 4:4:4 Chroma)**:
-  - Subsampling is set to `0` (4:4:4), preserving 100% of the chromatic resolution for colored sound effects, dialogue, and line art.
+  - Subsampling is set to `0` (4:4:4), preserving 100% of chromatic resolution for colored graph legends, formulas, annotations, and line art.
   - JPEG quantization tables are optimized at $Q82$. Because the Canvas Color screen physically dithers to 20,000 states, high-frequency quantization noise is completely invisible, while reducing file size by **~35% to 42%**.
 
 ### Stage 6: Lossless Container Assembly & Outline TOC
