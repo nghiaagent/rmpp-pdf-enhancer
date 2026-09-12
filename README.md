@@ -60,7 +60,7 @@ For full mathematical formulas, color science curves, and particle physics, see 
 ### Option A: Direct execution with `uvx`
 Run directly from GitHub without cloning or managing environments:
 ```bash
-uvx --from git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git rmpp-enhance "Document.pdf"
+uvx --from git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git rmpp-pdf-enhancer "Document.pdf"
 ```
 
 ### Option B: Install globally via `uv tool`
@@ -72,7 +72,7 @@ uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
 # Or from local clone:
 uv tool install .
 ```
-Now `rmpp-enhance` and `rmpp-pdf-enhancer` are permanently in your `$PATH`.
+Now `rmpp-pdf-enhancer` is permanently in your `$PATH`.
 
 ---
 
@@ -80,23 +80,24 @@ Now `rmpp-enhance` and `rmpp-pdf-enhancer` are permanently in your `$PATH`.
 
 ### 1. Optimize an existing PDF document
 ```bash
-uv run rmpp-enhance "Linear_Algebra_Textbook.pdf"
+uv run rmpp-pdf-enhancer "Linear_Algebra_Textbook.pdf"
 ```
 Produces `Linear_Algebra_Textbook_PaperPro_Optimized.pdf` with enhanced charts, clean margins, and sharp formulas.
+Running again in the same directory safely skips already-generated files without re-processing them (override with `-f` / `--force`).
 
 ### 2. Optimize a comic archive (`.cbz` or `.zip`)
 ```bash
-uv run rmpp-enhance "OnePiece_Vol100.cbz"
+uv run rmpp-pdf-enhancer "OnePiece_Vol100.cbz"
 ```
 
 ### 3. Process a folder of images
 ```bash
-uv run rmpp-enhance ./scanned_pages/ -o "MeetingNotes_Enhanced.pdf"
+uv run rmpp-pdf-enhancer ./scanned_pages/ -o "MeetingNotes_Enhanced.pdf"
 ```
 
 ### 4. Batch process a directory
 ```bash
-uv run rmpp-enhance ./DocumentsFolder/ --batch -o ./RMPP_Ready/
+uv run rmpp-pdf-enhancer ./DocumentsFolder/ --batch -o ./RMPP_Ready/
 ```
 
 ---
@@ -104,10 +105,10 @@ uv run rmpp-enhance ./DocumentsFolder/ --batch -o ./RMPP_Ready/
 ## CLI options reference
 
 ```text
-usage: rmpp-enhance [-h] [-o OUTPUT] [-q QUALITY] [--subsampling {0,2}]
-                    [-w WORKERS] [--no-lut] [--no-ink] [--lut-file LUT_FILE]
-                    [--batch] [-v]
-                    inputs [inputs ...]
+usage: rmpp-pdf-enhancer [-h] [-o OUTPUT] [-q QUALITY] [--subsampling {0,2}]
+                         [-w WORKERS] [-f] [--no-lut] [--no-ink]
+                         [--lut-file LUT_FILE] [--batch] [-v]
+                         inputs [inputs ...]
 
 reMarkable Paper Pro Canvas Color universal PDF, document, textbook and manga enhancer
 
@@ -120,6 +121,7 @@ options:
   -q, --quality QUALITY JPEG quality (1-100), tuned to 82 for fast cloud sync (default: 82)
   --subsampling {0,2}   Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file) (default: 0)
   -w, --workers WORKERS Number of concurrent worker threads (default: CPU count)
+  -f, --force           Force overwrite if output file already exists, and re-process already optimized files (default: False)
   --no-lut              Disable 3D LUT Canvas Color compensation (default: False)
   --no-ink              Disable bilateral edge-directed inking filter (default: False)
   --lut-file LUT_FILE   Custom .cube 3D LUT profile path (default: None)

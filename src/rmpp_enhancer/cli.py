@@ -37,10 +37,24 @@ def enhance_document(
     output_path: str = None,
     config: EnhancerConfig = None,
     workers: int = 8,
+    force: bool = False,
 ) -> str:
     """Enhances a single document/archive into an RMPP-optimized PDF."""
     config = config or EnhancerConfig()
     start_time = time.time()
+
+    if not output_path:
+        stem = os.path.splitext(os.path.basename(input_path))[0]
+        if os.path.isdir(input_path):
+            parent_dir = os.path.dirname(os.path.abspath(input_path))
+        else:
+            parent_dir = os.path.dirname(input_path) or "."
+        output_path = os.path.join(parent_dir, f"{stem}_PaperPro_Optimized.pdf")
+
+    if os.path.exists(output_path) and not force:
+        print(f"\n⏭️  Skipping: {os.path.basename(input_path)}")
+        print(f"   Output '{os.path.basename(output_path)}' already exists. Use --force to re-process.")
+        return output_path
 
     print(f"\n=======================================================")
     print(f"📖 Reading: {os.path.basename(input_path)}")
@@ -53,14 +67,6 @@ def enhance_document(
     if total_input_pages == 0:
         print("Warning: No pages found to process.")
         return ""
-
-    if not output_path:
-        stem = os.path.splitext(os.path.basename(input_path))[0]
-        if os.path.isdir(input_path):
-            parent_dir = os.path.dirname(os.path.abspath(input_path))
-        else:
-            parent_dir = os.path.dirname(input_path) or "."
-        output_path = os.path.join(parent_dir, f"{stem}_PaperPro_Optimized.pdf")
 
     # Preload LUT into memory before spawning threads
     if config.color_correction:
@@ -100,8 +106,8 @@ def enhance_document(
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="rmpp-enhance",
-        description="reMarkable Paper Pro Canvas Color Universal PDF, Document, Textbook & Manga Enhancer",
+        prog="rmpp-pdf-enhancer",
+        description="reMarkable Paper Pro Canvas Color universal PDF, document, textbook and manga enhancer",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("inputs", nargs="+", help="Input file(s): .pdf, .cbz, .zip, or directory of images/scans")
@@ -109,6 +115,7 @@ def main():
     parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100), tuned to 82 for fast cloud sync")
     parser.add_argument("--subsampling", type=int, choices=[0, 2], default=0, help="Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file)")
     parser.add_argument("-w", "--workers", type=int, default=min(8, os.cpu_count() or 4), help="Number of concurrent worker threads")
+    parser.add_argument("-f", "--force", action="store_true", help="Force overwrite if output file already exists, and re-process already optimized files")
     parser.add_argument("--no-lut", action="store_true", help="Disable 3D LUT Canvas Color compensation")
     parser.add_argument("--no-ink", action="store_true", help="Disable bilateral edge-directed inking filter")
     parser.add_argument("--lut-file", help="Custom .cube 3D LUT profile path")
@@ -125,20 +132,28 @@ def main():
         lut_path=args.lut_file,
     )
 
-    targets = []
+    raw_targets = []
     for inp in args.inputs:
         if args.batch and os.path.isdir(inp):
             # Batch mode: find subdirectories and archive files
             for entry in sorted(os.listdir(inp)):
                 full = os.path.join(inp, entry)
                 if os.path.isdir(full) or os.path.splitext(entry)[1].lower() in (".cbz", ".zip", ".pdf"):
-                    targets.append(full)
+                    raw_targets.append(full)
         else:
-            targets.append(inp)
+            raw_targets.append(inp)
+
+    targets = []
+    for t in raw_targets:
+        basename = os.path.basename(t.rstrip("/\\"))
+        if not args.force and "_PaperPro_Optimized" in basename:
+            print(f"⏭️  Skipping already optimized file: {basename}")
+            continue
+        targets.append(t)
 
     if not targets:
-        print("No valid input files found.")
-        sys.exit(1)
+        print("No valid input files found to process.")
+        sys.exit(0)
 
     print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro Universal Optimizer")
     print(f"Total targets to process: {len(targets)}")
@@ -153,7 +168,7 @@ def main():
             else:
                 out_target = args.output
 
-        enhance_document(target, output_path=out_target, config=config, workers=args.workers)
+        enhance_document(target, output_path=out_target, config=config, workers=args.workers, force=args.force)
 
 
 if __name__ == "__main__":

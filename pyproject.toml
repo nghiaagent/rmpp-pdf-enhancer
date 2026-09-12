@@ -22,7 +22,6 @@ dependencies = [
 ]
 
 [project.scripts]
-rmpp-enhance = "rmpp_enhancer.cli:main"
 rmpp-pdf-enhancer = "rmpp_enhancer.cli:main"
 
 [tool.hatch.build.targets.wheel]
