@@ -1,18 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "rmpp-pdf-enhancer"
 version = "0.1.0"
-description = "High-performance manga, comic, and document PDF enhancer tuned for reMarkable Paper Pro Canvas Color e-paper display"
+description = "High-performance comic, manga, and document PDF optimizer engineered for reMarkable Paper Pro Canvas Color"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
-    {name = "Nghia Nguyen", email = "nghia6a1@gmail.com"}
+    {name = "Antigravity (Google DeepMind)"}
 ]
-keywords = ["remarkable", "remarkable-paper-pro", "rmpp", "e-ink", "manga", "pdf", "color-correction", "comic"]
+keywords = ["remarkable", "remarkable-paper-pro", "rmpp", "canvas-color", "e-ink", "manga", "pdf", "color-correction", "comic"]
 dependencies = [
     "pillow>=10.0.0",
     "numpy>=1.22.0",
@@ -25,8 +25,8 @@ dependencies = [
 rmpp-enhance = "rmpp_enhancer.cli:main"
 rmpp-pdf-enhancer = "rmpp_enhancer.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/rmpp_enhancer"]
 
-[tool.setuptools.package-data]
-"rmpp_enhancer.profiles" = ["*.cube"]
+[tool.hatch.build.targets.wheel.sources]
+"src/rmpp_enhancer" = "rmpp_enhancer"

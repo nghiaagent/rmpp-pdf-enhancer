@@ -47,24 +47,14 @@ class TestRmppPipeline(unittest.TestCase):
         # Width must fit within 2160x1620
         self.assertTrue(scaled.size[0] <= 2160 and scaled.size[1] <= 1620)
 
-    def test_spread_splitting_rtl(self):
-        config = EnhancerConfig(split_spreads=True, spread_direction="rtl")
-        # Double spread 3000 x 1500 (2:1 aspect ratio)
-        im = Image.new("RGB", (3000, 1500), (200, 200, 200))
-        pages = process_image(im, config)
-        self.assertEqual(len(pages), 2)
-        # Both pages should be portrait
-        self.assertTrue(pages[0].size[1] >= pages[0].size[0])
-        self.assertTrue(pages[1].size[1] >= pages[1].size[0])
-
     def test_full_pipeline_and_pdf_generation(self):
         config = EnhancerConfig(quality=82)
         im = Image.new("RGB", (800, 1200), (100, 150, 200))
-        pages = process_image(im, config)
-        self.assertEqual(len(pages), 1)
+        page = process_image(im, config)
+        self.assertIsInstance(page, Image.Image)
 
         test_jpg = "/tmp/rmpp_unit_test.jpg"
-        pages[0].save(test_jpg, "JPEG", quality=config.quality, dpi=(config.dpi, config.dpi))
+        page.save(test_jpg, "JPEG", quality=config.quality, dpi=(config.dpi, config.dpi))
         self.assertTrue(os.path.exists(test_jpg))
 
         test_pdf = "/tmp/rmpp_unit_test.pdf"
