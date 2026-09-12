@@ -7,6 +7,7 @@ Layout:
 - Canvas: 2160 x 1620 px
 - Left half: Original sRGB (1080 x 1620 px)
 - Right half: Compensated RMPP (1080 x 1620 px)
+- All illustrations configured to FILL (1080 x 1620) with zero letterboxing.
 - Subtle 2px divider at x=1080 and minimal corner badges for clean tablet photography.
 """
 
@@ -61,35 +62,14 @@ def prepare_original_panel(
 
     fit_mode:
         - "cover": Aspect-fill and center crop to fill the entire 1080 x 1620 area.
+                   Handles alpha transparency automatically by cropping non-transparent
+                   bounds and compositing onto pure white before filling.
         - "fit_white": Aspect-fit inside 1040 x 1560 and center on pure white (255, 255, 255).
-        - "character_alpha": Crop to non-transparent bounding box and center on pure white.
+                       Reserved for technical calibration targets with edge labels.
     """
     raw_img = Image.open(img_path)
 
-    if fit_mode == "character_alpha":
-        rgba = raw_img.convert("RGBA")
-        alpha = np.array(rgba)[:, :, 3]
-        cols = np.where(alpha.max(axis=0) > 10)[0]
-        rows = np.where(alpha.max(axis=1) > 10)[0]
-        if len(cols) > 0 and len(rows) > 0:
-            cropped = rgba.crop((cols[0], rows[0], cols[-1] + 1, rows[-1] + 1))
-        else:
-            cropped = rgba
-
-        # Scale character to fit nicely inside 1020 x 1540
-        max_w, max_h = 1020, 1540
-        scale = min(max_w / cropped.width, max_h / cropped.height)
-        new_w = int(round(cropped.width * scale))
-        new_h = int(round(cropped.height * scale))
-        scaled = cropped.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-        panel = Image.new("RGB", (PANEL_W, PANEL_H), (255, 255, 255))
-        px = (PANEL_W - new_w) // 2
-        py = (PANEL_H - new_h) // 2
-        panel.paste(scaled, (px, py), scaled)
-        return panel
-
-    elif fit_mode == "fit_white":
+    if fit_mode == "fit_white":
         rgb = raw_img.convert("RGB")
         max_w, max_h = 1040, 1560
         scale = min(max_w / rgb.width, max_h / rgb.height)
@@ -103,8 +83,20 @@ def prepare_original_panel(
         panel.paste(scaled, (px, py))
         return panel
 
-    else:  # "cover"
-        rgb = raw_img.convert("RGB")
+    else:  # "cover" / fill
+        if raw_img.mode == "RGBA" or "transparency" in raw_img.info:
+            rgba = raw_img.convert("RGBA")
+            alpha = np.array(rgba)[:, :, 3]
+            cols = np.where(alpha.max(axis=0) > 10)[0]
+            rows = np.where(alpha.max(axis=1) > 10)[0]
+            if len(cols) > 0 and len(rows) > 0:
+                rgba = rgba.crop((cols[0], rows[0], cols[-1] + 1, rows[-1] + 1))
+            bg = Image.new("RGB", rgba.size, (255, 255, 255))
+            bg.paste(rgba, (0, 0), rgba)
+            rgb = bg
+        else:
+            rgb = raw_img.convert("RGB")
+
         scale = max(PANEL_W / rgb.width, PANEL_H / rgb.height)
         new_w = int(round(rgb.width * scale))
         new_h = int(round(rgb.height * scale))
@@ -169,7 +161,7 @@ def main():
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     asset_dir = os.path.join(repo_root, "assets", "benchmark_illustrations")
 
-    # 7 diverse benchmark targets
+    # 7 diverse benchmark targets with all illustrations set to FILL (cover)
     scenes = [
         {
             "num": 1,
@@ -182,14 +174,14 @@ def main():
             "num": 2,
             "title": "Genshin Impact: Navia (warm gold and amber)",
             "file": os.path.join(asset_dir, "02_genshin_navia_gold.png"),
-            "fit_mode": "character_alpha",
+            "fit_mode": "cover",
             "id": "illust_scene_2_navia_gold",
         },
         {
             "num": 3,
             "title": "Genshin Impact: Neuvillette (midnight navy and hydro cyan)",
             "file": os.path.join(asset_dir, "03_genshin_neuvillette_navy.png"),
-            "fit_mode": "character_alpha",
+            "fit_mode": "cover",
             "id": "illust_scene_3_neuvillette_navy",
         },
         {
@@ -231,13 +223,13 @@ def main():
     chapters = []
 
     print("=======================================================")
-    print("🎨 Generating 7 Illustration Landscape Comparisons")
+    print("🎨 Generating 7 Illustration Landscape Comparisons (Fill Mode)")
     print(f"   Canvas: {CANVAS_W}x{CANVAS_H} @ {DPI} PPI")
     print(f"   Panels: Left {PANEL_W}x{PANEL_H} (Original) | Right {PANEL_W}x{PANEL_H} (Compensated)")
     print("=======================================================")
 
     for idx, sc in enumerate(scenes):
-        print(f"\nProcessing Page {sc['num']}: {sc['title']}...")
+        print(f"\nProcessing Page {sc['num']}: {sc['title']} ({sc['fit_mode']})...")
         if not os.path.exists(sc["file"]):
             raise FileNotFoundError(f"Missing asset file: {sc['file']}")
 
