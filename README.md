@@ -141,12 +141,6 @@ The repository includes scripts to generate native $2160 \times 1620$ side-by-si
   ```
   Generates `Illustration_PaperPro_Comparison.pdf` containing side-by-side comparisons of standard calibration targets (CMYK, RGB, Grayscale ramps, SWOP colors, and resolution line tests), digital character illustrations (Genshin Impact), anime landscapes (Yuvalkirstain anime dataset), and high-gamut pop-art illustrations (Boshik dataset).
 
-- **MIT-Adobe FiveK benchmark**:
-  ```bash
-  uv run python scripts/generate_mit_comparisons.py
-  ```
-  Generates `MIT_PaperPro_Comparison.pdf` evaluating 5 photographic scenes across skin tones, deep shadow recovery, skies, flora, and intricate foliage.
-
 ---
 
 ## Testing
