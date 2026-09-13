@@ -21,6 +21,15 @@ dependencies = [
     "pikepdf>=8.0.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [project.scripts]
 rmpp-pdf-enhancer = "rmpp_enhancer.cli:main"
 

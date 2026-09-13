@@ -6,7 +6,7 @@ clean native PDF navigation outlines/bookmarks for reMarkable Paper Pro.
 """
 
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import img2pdf
 import pymupdf
 
@@ -14,7 +14,7 @@ import pymupdf
 def compile_pdf(
     jpeg_paths: List[str],
     output_pdf_path: str,
-    chapters: List[Tuple[str, int]] = None,
+    chapters: Optional[List[Tuple[str, int]]] = None,
 ) -> str:
     """
     Compiles a sequence of JPEG files into a single PDF without re-encoding,
@@ -33,10 +33,11 @@ def compile_pdf(
 
     os.makedirs(os.path.dirname(os.path.abspath(output_pdf_path)), exist_ok=True)
 
-    # 1. Lossless injection via img2pdf (preserves 229 DPI & 4:4:4 chroma directly)
-    pdf_bytes = img2pdf.convert(jpeg_paths)
+    # 1. Lossless injection via img2pdf (preserves 229 DPI & 4:4:4 chroma directly).
+    # Streamed straight to disk so a long book never materializes as one big
+    # bytes object in memory.
     with open(output_pdf_path, "wb") as f:
-        f.write(pdf_bytes)
+        img2pdf.convert(jpeg_paths, outputstream=f)
 
     # 2. Inject Table of Contents / Outline Bookmarks if present
     if chapters:

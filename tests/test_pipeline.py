@@ -10,7 +10,6 @@ from rmpp_enhancer.pipeline import (
     load_3d_lut,
     prepare_rgb,
     scale_to_rmpp_geometry,
-    apply_edge_directed_inking,
     process_image,
 )
 from rmpp_enhancer.pdf_builder import compile_pdf

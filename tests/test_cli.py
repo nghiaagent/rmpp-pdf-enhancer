@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from PIL import Image
 from rmpp_enhancer.cli import enhance_document
-from rmpp_enhancer.pipeline import EnhancerConfig
 
 
 class TestCliSkipBehavior(unittest.TestCase):

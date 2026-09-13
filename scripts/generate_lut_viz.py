@@ -10,28 +10,26 @@ Generates a publication-quality 4-panel visualization of the reMarkable Paper Pr
 """
 
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from PIL import Image, ImageFilter
+from PIL import Image
+
+# Ensure src is in sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
+
+from rmpp_enhancer.pipeline import load_3d_lut
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LUT_PATH = os.path.join(REPO_ROOT, "src", "rmpp_enhancer", "profiles", "rmpp_canvas_color.cube")
 OUT_PATH = os.path.join(REPO_ROOT, "docs", "images", "cube_lut_visualization.png")
 
 
 def main():
-    lut = []
-    with open(LUT_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or line.startswith("TITLE") or line.startswith("LUT") or line.startswith("DOMAIN"):
-                continue
-            parts = [float(x) for x in line.split()]
-            if len(parts) == 3:
-                lut.extend(parts)
-
-    lut_arr = np.array(lut, dtype=np.float32).reshape((33, 33, 33, 3))
+    # Reuse the shipped parser so the plot always matches what the pipeline applies
+    pil_lut = load_3d_lut()
+    size = pil_lut.size[0]
+    lut = list(pil_lut.table)
+    lut_arr = np.array(lut, dtype=np.float32).reshape((size, size, size, 3))
 
     plt.style.use("default")
     fig = plt.figure(figsize=(15, 11), dpi=200)
@@ -51,8 +49,9 @@ def main():
     ax1.set_facecolor("#0F141C")
 
     step = 4
-    sub_indices = np.arange(0, 33, step)
-    grid_r, grid_g, grid_b = np.meshgrid(sub_indices / 32.0, sub_indices / 32.0, sub_indices / 32.0, indexing="ij")
+    sub_indices = np.arange(0, size, step)
+    axis = sub_indices / (size - 1)
+    grid_r, grid_g, grid_b = np.meshgrid(axis, axis, axis, indexing="ij")
     flat_r, flat_g, flat_b = grid_r.flatten(), grid_g.flatten(), grid_b.flatten()
     colors_in = np.column_stack([flat_r, flat_g, flat_b])
 
@@ -98,12 +97,12 @@ def main():
     ax3.set_facecolor("#141A23")
     ax3.grid(True, linestyle="--", alpha=0.2, color="#718096")
 
-    gray_levels = np.linspace(0, 1, 33)
-    neutral_out = [lut_arr[i, i, i, 0] for i in range(33)]
-    cyan_out = [lut_arr[i, i, 0, 1] for i in range(33)]
+    gray_levels = np.linspace(0, 1, size)
+    neutral_out = [lut_arr[i, i, i, 0] for i in range(size)]
+    cyan_out = [lut_arr[i, i, 0, 1] for i in range(size)]
 
     skin_out = []
-    for i in range(33):
+    for i in range(size):
         r_idx = i
         g_idx = int(round(i * 0.75))
         b_idx = int(round(i * 0.60))
@@ -136,7 +135,6 @@ def main():
     rg_r, rg_g = np.meshgrid(r_coords, g_coords)
     orig_slice = np.stack([rg_r, rg_g, np.full_like(rg_r, 0.5)], axis=-1)
 
-    pil_lut = ImageFilter.Color3DLUT(33, lut)
     orig_pil = Image.fromarray((orig_slice * 255).astype(np.uint8))
     comp_pil = orig_pil.filter(pil_lut)
     comp_slice = np.array(comp_pil, dtype=np.float32) / 255.0

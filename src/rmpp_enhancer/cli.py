@@ -6,12 +6,13 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
+from typing import Optional, Tuple
 
 from rmpp_enhancer import __version__
-from rmpp_enhancer.extractor import extract_document
+from rmpp_enhancer.extractor import PageItem, extract_document
 from rmpp_enhancer.pdf_builder import compile_pdf
 from rmpp_enhancer.pipeline import (
     EnhancerConfig,
@@ -21,7 +22,24 @@ from rmpp_enhancer.pipeline import (
 )
 
 
-def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
+DEFAULT_WORKERS = min(8, os.cpu_count() or 4)
+OPTIMIZED_SUFFIX = "_PaperPro_Optimized"
+
+
+def optimized_output_path(input_path: str, dest_dir: Optional[str] = None) -> str:
+    """Default output path for an input: ``<stem>_PaperPro_Optimized.pdf``.
+
+    The path is normalized first, so a directory named with a trailing separator
+    -- which is what shell tab-completion produces -- keeps its name instead of
+    collapsing to an empty stem.
+    """
+    normalized = os.path.normpath(input_path)
+    parent = dest_dir if dest_dir is not None else os.path.dirname(os.path.abspath(normalized))
+    stem = os.path.splitext(os.path.basename(normalized))[0]
+    return os.path.join(parent, f"{stem}{OPTIMIZED_SUFFIX}.pdf")
+
+
+def process_single_page(args: Tuple[int, PageItem, str, EnhancerConfig]) -> str:
     page_idx, page_item, work_dir, config = args
     img = page_item.load_image()
     processed_img = process_image(img, config)
@@ -34,31 +52,25 @@ def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
 
 def enhance_document(
     input_path: str,
-    output_path: str = None,
-    config: EnhancerConfig = None,
-    workers: int = 8,
+    output_path: Optional[str] = None,
+    config: Optional[EnhancerConfig] = None,
+    workers: int = DEFAULT_WORKERS,
     force: bool = False,
 ) -> str:
     """Enhances a single document/archive into an RMPP-optimized PDF."""
     config = config or EnhancerConfig()
     start_time = time.time()
 
-    if not output_path:
-        stem = os.path.splitext(os.path.basename(input_path))[0]
-        if os.path.isdir(input_path):
-            parent_dir = os.path.dirname(os.path.abspath(input_path))
-        else:
-            parent_dir = os.path.dirname(input_path) or "."
-        output_path = os.path.join(parent_dir, f"{stem}_PaperPro_Optimized.pdf")
+    output_path = output_path or optimized_output_path(input_path)
 
     if os.path.exists(output_path) and not force:
         print(f"\n⏭️  Skipping: {os.path.basename(input_path)}")
         print(f"   Output '{os.path.basename(output_path)}' already exists. Use --force to re-process.")
         return output_path
 
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"📖 Reading: {os.path.basename(input_path)}")
-    print(f"=======================================================")
+    print("=======================================================")
 
     doc = extract_document(input_path)
     total_input_pages = len(doc.pages)
@@ -72,8 +84,7 @@ def enhance_document(
     if config.color_correction:
         load_3d_lut(config.lut_path)
 
-    work_dir = f"/tmp/rmpp_proc_{int(time.time() * 1000)}"
-    os.makedirs(work_dir, exist_ok=True)
+    work_dir = tempfile.mkdtemp(prefix="rmpp_proc_")
 
     print(f"⚡ Processing {total_input_pages} pages with {workers} workers...")
     print(f"   Settings: Quality Q{config.quality}, Subsampling={'4:4:4' if config.subsampling == 0 else '4:2:0'}")
@@ -81,20 +92,19 @@ def enhance_document(
 
     tasks = [(i, page_item, work_dir, config) for i, page_item in enumerate(doc.pages)]
 
-    t0 = time.time()
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        all_jpegs = list(executor.map(process_single_page, tasks))
+    try:
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            all_jpegs = list(executor.map(process_single_page, tasks))
 
-    proc_duration = time.time() - t0
-    print(f"✓ Processed {len(all_jpegs)} output pages in {proc_duration:.2f}s ({proc_duration / len(all_jpegs):.3f}s/page)")
+        proc_duration = time.time() - t0
+        print(f"✓ Processed {len(all_jpegs)} output pages in {proc_duration:.2f}s ({proc_duration / len(all_jpegs):.3f}s/page)")
 
-    print(f"📦 Assembling PDF: {os.path.basename(output_path)}...")
-    t_pdf = time.time()
-    final_pdf = compile_pdf(all_jpegs, output_path, chapters=doc.chapters)
-    pdf_duration = time.time() - t_pdf
-
-    # Clean up intermediate images
-    shutil.rmtree(work_dir, ignore_errors=True)
+        print(f"📦 Assembling PDF: {os.path.basename(output_path)}...")
+        final_pdf = compile_pdf(all_jpegs, output_path, chapters=doc.chapters)
+    finally:
+        # Always clear the intermediate JPEGs, including on failure
+        shutil.rmtree(work_dir, ignore_errors=True)
 
     file_size_mb = os.path.getsize(final_pdf) / (1024 * 1024)
     total_duration = time.time() - start_time
@@ -114,7 +124,7 @@ def main():
     parser.add_argument("-o", "--output", help="Output PDF file path (or destination directory if multiple inputs)")
     parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100, default %(default)s)")
     parser.add_argument("--subsampling", type=int, choices=[0, 2], default=0, help="Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file)")
-    parser.add_argument("-w", "--workers", type=int, default=min(8, os.cpu_count() or 4), help="Number of concurrent worker threads")
+    parser.add_argument("-w", "--workers", type=int, default=DEFAULT_WORKERS, help="Number of concurrent worker threads")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite if output file already exists, and re-process already optimized files")
     parser.add_argument("--no-lut", action="store_true", help="Disable included LUT compensation")
     parser.add_argument("--no-ink", action="store_true", help="Disable bilateral edge-directed inking filter")
@@ -123,6 +133,11 @@ def main():
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
+
+    if not 1 <= args.quality <= 100:
+        parser.error("--quality must be between 1 and 100")
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
 
     config = EnhancerConfig(
         quality=args.quality,
@@ -145,8 +160,8 @@ def main():
 
     targets = []
     for t in raw_targets:
-        basename = os.path.basename(t.rstrip("/\\"))
-        if not args.force and "_PaperPro_Optimized" in basename:
+        basename = os.path.basename(os.path.normpath(t))
+        if not args.force and OPTIMIZED_SUFFIX in basename:
             print(f"⏭️  Skipping already optimized file: {basename}")
             continue
         targets.append(t)
@@ -162,9 +177,9 @@ def main():
         out_target = None
         if args.output:
             if os.path.isdir(args.output) or len(targets) > 1:
+                # --output names a destination directory for this many outputs
                 os.makedirs(args.output, exist_ok=True)
-                stem = os.path.splitext(os.path.basename(target))[0]
-                out_target = os.path.join(args.output, f"{stem}_PaperPro_Optimized.pdf")
+                out_target = optimized_output_path(target, dest_dir=args.output)
             else:
                 out_target = args.output
 

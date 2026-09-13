@@ -9,12 +9,39 @@ Features:
 """
 
 import os
+import threading
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional
 from PIL import Image, ImageFilter
 import numpy as np
 
 from rmpp_enhancer.profiles import DEFAULT_LUT_PATH
+
+
+# reMarkable Paper Pro "Option A" panel geometry, in pixels. The panel is used
+# in whichever orientation matches the page, so these are named by side length
+# rather than by width/height.
+RMPP_SHORT_SIDE = 1620
+RMPP_LONG_SIDE = 2160
+RMPP_DPI = 229
+
+
+def rmpp_fit_scale(
+    width: int,
+    height: int,
+    short_side: int = RMPP_SHORT_SIDE,
+    long_side: int = RMPP_LONG_SIDE,
+) -> float:
+    """Scale factor that fits ``width`` x ``height`` onto the panel.
+
+    Portrait pages fit within short x long; landscape spreads get the panel
+    rotated, so they fit within long x short. This is the single definition of
+    the target geometry: both the PDF page renderer and the image scaler use it,
+    so a render never disagrees with the resize that follows it.
+    """
+    if height >= width:
+        return min(short_side / width, long_side / height)
+    return min(long_side / width, short_side / height)
 
 
 @dataclass
@@ -24,20 +51,31 @@ class EnhancerConfig:
     color_correction: bool = True   # Apply OKLab v3 3D LUT
     edge_inking: bool = True        # Apply bilateral edge-directed inking
     lut_path: Optional[str] = None  # Path to .cube LUT file (None = use bundled)
-    target_width: int = 1620        # RMPP portrait width
-    target_height: int = 2160       # RMPP portrait height
-    dpi: int = 229                  # Native screen density
+    target_width: int = RMPP_SHORT_SIDE   # RMPP portrait width
+    target_height: int = RMPP_LONG_SIDE   # RMPP portrait height
+    dpi: int = RMPP_DPI                   # Native screen density
 
 
-# Global cache for the parsed Pillow 3D LUT
+# Global cache for the parsed Pillow 3D LUT. Pages are processed on a thread
+# pool, so the cache is guarded to keep parsing to a single pass.
 _CACHED_LUT: Optional[ImageFilter.Color3DLUT] = None
 _CACHED_LUT_PATH: Optional[str] = None
+_LUT_LOCK = threading.Lock()
 
 
 def load_3d_lut(cube_path: Optional[str] = None) -> ImageFilter.Color3DLUT:
     """Loads and caches a .cube 3D LUT into Pillow's Color3DLUT format."""
-    global _CACHED_LUT, _CACHED_LUT_PATH
     actual_path = cube_path or DEFAULT_LUT_PATH
+
+    if _CACHED_LUT is not None and _CACHED_LUT_PATH == actual_path:
+        return _CACHED_LUT
+
+    with _LUT_LOCK:
+        return _parse_and_cache_lut(actual_path)
+
+
+def _parse_and_cache_lut(actual_path: str) -> ImageFilter.Color3DLUT:
+    global _CACHED_LUT, _CACHED_LUT_PATH
 
     if _CACHED_LUT is not None and _CACHED_LUT_PATH == actual_path:
         return _CACHED_LUT
@@ -85,12 +123,7 @@ def prepare_rgb(img: Image.Image) -> Image.Image:
 def scale_to_rmpp_geometry(img: Image.Image, config: EnhancerConfig) -> Image.Image:
     """Scales image proportionally to reMarkable Paper Pro Option A screen dimensions."""
     w, h = img.size
-    if h >= w:
-        # Portrait: fit within 1620 x 2160 (height target 2160)
-        scale = min(config.target_width / w, config.target_height / h)
-    else:
-        # Landscape spread: fit within 2160 x 1620
-        scale = min(config.target_height / w, config.target_width / h)
+    scale = rmpp_fit_scale(w, h, config.target_width, config.target_height)
 
     new_w = max(1, int(round(w * scale)))
     new_h = max(1, int(round(h * scale)))
@@ -98,6 +131,9 @@ def scale_to_rmpp_geometry(img: Image.Image, config: EnhancerConfig) -> Image.Im
     if (new_w, new_h) != (w, h):
         return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
     return img
+
+
+_LUMA_WEIGHTS = np.array([0.299, 0.587, 0.114], dtype=np.float32)
 
 
 def apply_edge_directed_inking(img: Image.Image) -> Image.Image:
@@ -110,20 +146,19 @@ def apply_edge_directed_inking(img: Image.Image) -> Image.Image:
     """
     gray = img.convert("L")
     edges = gray.filter(ImageFilter.FIND_EDGES)
-    edges_arr = np.array(edges, dtype=np.float32) / 255.0
+    edges_arr = np.asarray(edges, dtype=np.float32) / 255.0
     edge_mask = edges_arr > 0.16
 
-    arr = np.array(img, dtype=np.float32) / 255.0
-    lum = 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
+    arr = np.asarray(img, dtype=np.float32) / 255.0
+    lum = arr @ _LUMA_WEIGHTS
 
-    dark_ink = edge_mask & (lum < 0.40)
-    light_surround = edge_mask & (lum >= 0.40)
+    # Single per-pixel gain map: 0.75 on dark ink, 1.10 on the lighter side of an
+    # edge, 1.0 everywhere else. Applied in one pass over all three channels.
+    gain = np.where(edge_mask, np.where(lum < 0.40, 0.75, 1.10), 1.0).astype(np.float32)
+    arr *= gain[..., None]
+    np.clip(arr, 0.0, 1.0, out=arr)
 
-    for c in range(3):
-        arr[..., c][dark_ink] = np.clip(arr[..., c][dark_ink] * 0.75, 0.0, 1.0)
-        arr[..., c][light_surround] = np.clip(arr[..., c][light_surround] * 1.10, 0.0, 1.0)
-
-    res = Image.fromarray((arr * 255).astype(np.uint8))
+    res = Image.fromarray(np.rint(arr * 255).astype(np.uint8))
     return res.filter(ImageFilter.UnsharpMask(radius=1.0, percent=115, threshold=3))
 
 
