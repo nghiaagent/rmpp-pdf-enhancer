@@ -73,6 +73,17 @@ uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
 uv tool install .
 ```
 
+### Option C: Build from source via `cargo`
+Pure Rust with zero external C dependencies or system packages:
+```bash
+# Build release binary locally:
+cargo build --release
+
+# Or install globally to ~/.cargo/bin:
+cargo install --path .
+```
+
+
 ---
 
 ## Quickstart
