@@ -18,6 +18,32 @@ import numpy as np
 from rmpp_enhancer.profiles import DEFAULT_LUT_PATH
 
 
+# reMarkable Paper Pro "Option A" panel geometry, in pixels. The panel is used
+# in whichever orientation matches the page, so these are named by side length
+# rather than by width/height.
+RMPP_SHORT_SIDE = 1620
+RMPP_LONG_SIDE = 2160
+RMPP_DPI = 229
+
+
+def rmpp_fit_scale(
+    width: int,
+    height: int,
+    short_side: int = RMPP_SHORT_SIDE,
+    long_side: int = RMPP_LONG_SIDE,
+) -> float:
+    """Scale factor that fits ``width`` x ``height`` onto the panel.
+
+    Portrait pages fit within short x long; landscape spreads get the panel
+    rotated, so they fit within long x short. This is the single definition of
+    the target geometry: both the PDF page renderer and the image scaler use it,
+    so a render never disagrees with the resize that follows it.
+    """
+    if height >= width:
+        return min(short_side / width, long_side / height)
+    return min(long_side / width, short_side / height)
+
+
 @dataclass
 class EnhancerConfig:
     quality: int = 82               # Tuned sweet-spot for fast reMarkable sync
@@ -25,9 +51,9 @@ class EnhancerConfig:
     color_correction: bool = True   # Apply OKLab v3 3D LUT
     edge_inking: bool = True        # Apply bilateral edge-directed inking
     lut_path: Optional[str] = None  # Path to .cube LUT file (None = use bundled)
-    target_width: int = 1620        # RMPP portrait width
-    target_height: int = 2160       # RMPP portrait height
-    dpi: int = 229                  # Native screen density
+    target_width: int = RMPP_SHORT_SIDE   # RMPP portrait width
+    target_height: int = RMPP_LONG_SIDE   # RMPP portrait height
+    dpi: int = RMPP_DPI                   # Native screen density
 
 
 # Global cache for the parsed Pillow 3D LUT. Pages are processed on a thread
@@ -97,12 +123,7 @@ def prepare_rgb(img: Image.Image) -> Image.Image:
 def scale_to_rmpp_geometry(img: Image.Image, config: EnhancerConfig) -> Image.Image:
     """Scales image proportionally to reMarkable Paper Pro Option A screen dimensions."""
     w, h = img.size
-    if h >= w:
-        # Portrait: fit within 1620 x 2160 (height target 2160)
-        scale = min(config.target_width / w, config.target_height / h)
-    else:
-        # Landscape spread: fit within 2160 x 1620
-        scale = min(config.target_height / w, config.target_width / h)
+    scale = rmpp_fit_scale(w, h, config.target_width, config.target_height)
 
     new_w = max(1, int(round(w * scale)))
     new_h = max(1, int(round(h * scale)))

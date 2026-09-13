@@ -23,6 +23,20 @@ from rmpp_enhancer.pipeline import (
 
 
 DEFAULT_WORKERS = min(8, os.cpu_count() or 4)
+OPTIMIZED_SUFFIX = "_PaperPro_Optimized"
+
+
+def optimized_output_path(input_path: str, dest_dir: Optional[str] = None) -> str:
+    """Default output path for an input: ``<stem>_PaperPro_Optimized.pdf``.
+
+    The path is normalized first, so a directory named with a trailing separator
+    -- which is what shell tab-completion produces -- keeps its name instead of
+    collapsing to an empty stem.
+    """
+    normalized = os.path.normpath(input_path)
+    parent = dest_dir if dest_dir is not None else os.path.dirname(os.path.abspath(normalized))
+    stem = os.path.splitext(os.path.basename(normalized))[0]
+    return os.path.join(parent, f"{stem}{OPTIMIZED_SUFFIX}.pdf")
 
 
 def process_single_page(args: Tuple[int, PageItem, str, EnhancerConfig]) -> str:
@@ -47,22 +61,16 @@ def enhance_document(
     config = config or EnhancerConfig()
     start_time = time.time()
 
-    if not output_path:
-        stem = os.path.splitext(os.path.basename(input_path))[0]
-        if os.path.isdir(input_path):
-            parent_dir = os.path.dirname(os.path.abspath(input_path))
-        else:
-            parent_dir = os.path.dirname(input_path) or "."
-        output_path = os.path.join(parent_dir, f"{stem}_PaperPro_Optimized.pdf")
+    output_path = output_path or optimized_output_path(input_path)
 
     if os.path.exists(output_path) and not force:
         print(f"\n⏭️  Skipping: {os.path.basename(input_path)}")
         print(f"   Output '{os.path.basename(output_path)}' already exists. Use --force to re-process.")
         return output_path
 
-    print(f"\n=======================================================")
+    print("\n=======================================================")
     print(f"📖 Reading: {os.path.basename(input_path)}")
-    print(f"=======================================================")
+    print("=======================================================")
 
     doc = extract_document(input_path)
     total_input_pages = len(doc.pages)
@@ -152,8 +160,8 @@ def main():
 
     targets = []
     for t in raw_targets:
-        basename = os.path.basename(t.rstrip("/\\"))
-        if not args.force and "_PaperPro_Optimized" in basename:
+        basename = os.path.basename(os.path.normpath(t))
+        if not args.force and OPTIMIZED_SUFFIX in basename:
             print(f"⏭️  Skipping already optimized file: {basename}")
             continue
         targets.append(t)
@@ -169,9 +177,9 @@ def main():
         out_target = None
         if args.output:
             if os.path.isdir(args.output) or len(targets) > 1:
+                # --output names a destination directory for this many outputs
                 os.makedirs(args.output, exist_ok=True)
-                stem = os.path.splitext(os.path.basename(target))[0]
-                out_target = os.path.join(args.output, f"{stem}_PaperPro_Optimized.pdf")
+                out_target = optimized_output_path(target, dest_dir=args.output)
             else:
                 out_target = args.output
 

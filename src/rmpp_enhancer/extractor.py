@@ -19,6 +19,8 @@ from typing import Callable, List, Optional, Tuple
 from PIL import Image
 import pymupdf
 
+from rmpp_enhancer.pipeline import rmpp_fit_scale
+
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
 
@@ -119,13 +121,7 @@ def _load_image_from_pdf(pdf_path: str, page_idx: int) -> Image.Image:
 
     # For all vector, document, article, textbook, and multi-element PDF pages:
     # Render the complete page (text, fonts, math, figures, vectors) at Option A resolution
-    w_pt, h_pt = page.rect.width, page.rect.height
-    if h_pt >= w_pt:
-        # Portrait: target height 2160, width max 1620
-        scale = min(1620.0 / w_pt, 2160.0 / h_pt)
-    else:
-        # Landscape: target width 2160, height max 1620
-        scale = min(2160.0 / w_pt, 1620.0 / h_pt)
+    scale = rmpp_fit_scale(page.rect.width, page.rect.height)
 
     mat = pymupdf.Matrix(scale, scale)
     pix = page.get_pixmap(matrix=mat, alpha=False)
