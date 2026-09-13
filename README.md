@@ -165,11 +165,22 @@ options:
 
 ## Benchmarking and tablet screen comparisons
 
-The repository includes scripts to generate comparison PDFs:
+The repository includes scripts to regenerate the committed artifacts. Each
+writes into the repository by default; pass `--out-dir` to send output elsewhere.
 
 ```bash
+# Side-by-side comparison JPEGs + PDF -> docs/images/
 uv run python scripts/generate_illustration_comparisons.py
+
+# The bundled .cube colour profile -> src/rmpp_enhancer/profiles/
+uv run python scripts/generate_canvas_color_lut.py
+
+# The 4-panel LUT visualization -> docs/images/ (needs matplotlib)
+uv run --with matplotlib python scripts/generate_lut_viz.py
 ```
+
+All three are deterministic: re-running them on an unmodified checkout
+reproduces the committed files byte-for-byte.
 
 ---
 

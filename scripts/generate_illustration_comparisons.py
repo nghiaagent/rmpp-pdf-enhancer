@@ -11,10 +11,10 @@ Layout:
 - Subtle 2px divider at x=1080 and minimal corner badges for clean tablet photography.
 """
 
+import argparse
 import os
-import shutil
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
@@ -25,6 +25,7 @@ from rmpp_enhancer.pipeline import (
     EnhancerConfig,
     load_3d_lut,
     apply_edge_directed_inking,
+    prepare_rgb,
 )
 from rmpp_enhancer.pdf_builder import compile_pdf
 
@@ -70,7 +71,7 @@ def prepare_original_panel(
     raw_img = Image.open(img_path)
 
     if fit_mode == "fit_white":
-        rgb = raw_img.convert("RGB")
+        rgb = prepare_rgb(raw_img)
         max_w, max_h = 1040, 1560
         scale = min(max_w / rgb.width, max_h / rgb.height)
         new_w = int(round(rgb.width * scale))
@@ -155,10 +156,21 @@ def create_comparison_page(
 
 
 def main():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+    parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    parser.add_argument(
+        "-o",
+        "--out-dir",
+        default=os.path.join(repo_root, "docs", "images"),
+        help="Directory to write the comparison JPEGs and PDF into (default: %(default)s)",
+    )
+    args = parser.parse_args()
+    out_dir = args.out_dir
+
     config = EnhancerConfig(quality=82, subsampling=0)
     pil_lut = load_3d_lut(config.lut_path)
 
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     asset_dir = os.path.join(repo_root, "assets", "benchmark_illustrations")
 
     # 7 diverse benchmark targets with all illustrations set to FILL (cover)
@@ -214,10 +226,7 @@ def main():
         },
     ]
 
-    out_dir = "/Users/nghiaagent/Downloads/20260912-200000-converts"
-    docs_img_dir = os.path.join(repo_root, "docs", "images")
     os.makedirs(out_dir, exist_ok=True)
-    os.makedirs(docs_img_dir, exist_ok=True)
 
     page_jpegs = []
     chapters = []
@@ -241,18 +250,9 @@ def main():
 
         jpeg_filename = f"{sc['id']}_comparison.jpg"
         jpeg_out_path = os.path.join(out_dir, jpeg_filename)
-        docs_out_path = os.path.join(docs_img_dir, jpeg_filename)
 
         page_img.save(
             jpeg_out_path,
-            "JPEG",
-            quality=config.quality,
-            subsampling=config.subsampling,
-            dpi=(DPI, DPI),
-            optimize=True,
-        )
-        page_img.save(
-            docs_out_path,
             "JPEG",
             quality=config.quality,
             subsampling=config.subsampling,
@@ -267,15 +267,12 @@ def main():
 
     # Assemble into single multi-page PDF
     pdf_out_path = os.path.join(out_dir, "Illustration_PaperPro_Comparison.pdf")
-    docs_pdf_path = os.path.join(docs_img_dir, "Illustration_PaperPro_Comparison.pdf")
 
     print(f"\n📦 Compiling PDF: {os.path.basename(pdf_out_path)}...")
     compile_pdf(page_jpegs, pdf_out_path, chapters=chapters)
-    shutil.copyfile(pdf_out_path, docs_pdf_path)
 
     pdf_size_mb = os.path.getsize(pdf_out_path) / (1024 * 1024)
     print(f"🎉 Created {pdf_out_path} ({pdf_size_mb:.2f} MB, {len(page_jpegs)} pages)")
-    print(f"   Also copied to {docs_pdf_path}")
 
 
 if __name__ == "__main__":
