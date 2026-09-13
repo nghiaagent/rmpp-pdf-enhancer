@@ -6,12 +6,13 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
+from typing import Optional, Tuple
 
 from rmpp_enhancer import __version__
-from rmpp_enhancer.extractor import extract_document
+from rmpp_enhancer.extractor import PageItem, extract_document
 from rmpp_enhancer.pdf_builder import compile_pdf
 from rmpp_enhancer.pipeline import (
     EnhancerConfig,
@@ -21,7 +22,10 @@ from rmpp_enhancer.pipeline import (
 )
 
 
-def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
+DEFAULT_WORKERS = min(8, os.cpu_count() or 4)
+
+
+def process_single_page(args: Tuple[int, PageItem, str, EnhancerConfig]) -> str:
     page_idx, page_item, work_dir, config = args
     img = page_item.load_image()
     processed_img = process_image(img, config)
@@ -34,9 +38,9 @@ def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
 
 def enhance_document(
     input_path: str,
-    output_path: str = None,
-    config: EnhancerConfig = None,
-    workers: int = 8,
+    output_path: Optional[str] = None,
+    config: Optional[EnhancerConfig] = None,
+    workers: int = DEFAULT_WORKERS,
     force: bool = False,
 ) -> str:
     """Enhances a single document/archive into an RMPP-optimized PDF."""
@@ -72,8 +76,7 @@ def enhance_document(
     if config.color_correction:
         load_3d_lut(config.lut_path)
 
-    work_dir = f"/tmp/rmpp_proc_{int(time.time() * 1000)}"
-    os.makedirs(work_dir, exist_ok=True)
+    work_dir = tempfile.mkdtemp(prefix="rmpp_proc_")
 
     print(f"⚡ Processing {total_input_pages} pages with {workers} workers...")
     print(f"   Settings: Quality Q{config.quality}, Subsampling={'4:4:4' if config.subsampling == 0 else '4:2:0'}")
@@ -81,20 +84,19 @@ def enhance_document(
 
     tasks = [(i, page_item, work_dir, config) for i, page_item in enumerate(doc.pages)]
 
-    t0 = time.time()
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        all_jpegs = list(executor.map(process_single_page, tasks))
+    try:
+        t0 = time.time()
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            all_jpegs = list(executor.map(process_single_page, tasks))
 
-    proc_duration = time.time() - t0
-    print(f"✓ Processed {len(all_jpegs)} output pages in {proc_duration:.2f}s ({proc_duration / len(all_jpegs):.3f}s/page)")
+        proc_duration = time.time() - t0
+        print(f"✓ Processed {len(all_jpegs)} output pages in {proc_duration:.2f}s ({proc_duration / len(all_jpegs):.3f}s/page)")
 
-    print(f"📦 Assembling PDF: {os.path.basename(output_path)}...")
-    t_pdf = time.time()
-    final_pdf = compile_pdf(all_jpegs, output_path, chapters=doc.chapters)
-    pdf_duration = time.time() - t_pdf
-
-    # Clean up intermediate images
-    shutil.rmtree(work_dir, ignore_errors=True)
+        print(f"📦 Assembling PDF: {os.path.basename(output_path)}...")
+        final_pdf = compile_pdf(all_jpegs, output_path, chapters=doc.chapters)
+    finally:
+        # Always clear the intermediate JPEGs, including on failure
+        shutil.rmtree(work_dir, ignore_errors=True)
 
     file_size_mb = os.path.getsize(final_pdf) / (1024 * 1024)
     total_duration = time.time() - start_time
@@ -114,7 +116,7 @@ def main():
     parser.add_argument("-o", "--output", help="Output PDF file path (or destination directory if multiple inputs)")
     parser.add_argument("-q", "--quality", type=int, default=82, help="JPEG quality (1-100, default %(default)s)")
     parser.add_argument("--subsampling", type=int, choices=[0, 2], default=0, help="Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file)")
-    parser.add_argument("-w", "--workers", type=int, default=min(8, os.cpu_count() or 4), help="Number of concurrent worker threads")
+    parser.add_argument("-w", "--workers", type=int, default=DEFAULT_WORKERS, help="Number of concurrent worker threads")
     parser.add_argument("-f", "--force", action="store_true", help="Force overwrite if output file already exists, and re-process already optimized files")
     parser.add_argument("--no-lut", action="store_true", help="Disable included LUT compensation")
     parser.add_argument("--no-ink", action="store_true", help="Disable bilateral edge-directed inking filter")
@@ -123,6 +125,11 @@ def main():
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
+
+    if not 1 <= args.quality <= 100:
+        parser.error("--quality must be between 1 and 100")
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
 
     config = EnhancerConfig(
         quality=args.quality,

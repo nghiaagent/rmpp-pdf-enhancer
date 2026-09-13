@@ -9,8 +9,9 @@ Features:
 """
 
 import os
+import threading
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional
 from PIL import Image, ImageFilter
 import numpy as np
 
@@ -29,15 +30,26 @@ class EnhancerConfig:
     dpi: int = 229                  # Native screen density
 
 
-# Global cache for the parsed Pillow 3D LUT
+# Global cache for the parsed Pillow 3D LUT. Pages are processed on a thread
+# pool, so the cache is guarded to keep parsing to a single pass.
 _CACHED_LUT: Optional[ImageFilter.Color3DLUT] = None
 _CACHED_LUT_PATH: Optional[str] = None
+_LUT_LOCK = threading.Lock()
 
 
 def load_3d_lut(cube_path: Optional[str] = None) -> ImageFilter.Color3DLUT:
     """Loads and caches a .cube 3D LUT into Pillow's Color3DLUT format."""
-    global _CACHED_LUT, _CACHED_LUT_PATH
     actual_path = cube_path or DEFAULT_LUT_PATH
+
+    if _CACHED_LUT is not None and _CACHED_LUT_PATH == actual_path:
+        return _CACHED_LUT
+
+    with _LUT_LOCK:
+        return _parse_and_cache_lut(actual_path)
+
+
+def _parse_and_cache_lut(actual_path: str) -> ImageFilter.Color3DLUT:
+    global _CACHED_LUT, _CACHED_LUT_PATH
 
     if _CACHED_LUT is not None and _CACHED_LUT_PATH == actual_path:
         return _CACHED_LUT
@@ -100,6 +112,9 @@ def scale_to_rmpp_geometry(img: Image.Image, config: EnhancerConfig) -> Image.Im
     return img
 
 
+_LUMA_WEIGHTS = np.array([0.299, 0.587, 0.114], dtype=np.float32)
+
+
 def apply_edge_directed_inking(img: Image.Image) -> Image.Image:
     """
     Applies bilateral edge-directed inking filter:
@@ -110,20 +125,19 @@ def apply_edge_directed_inking(img: Image.Image) -> Image.Image:
     """
     gray = img.convert("L")
     edges = gray.filter(ImageFilter.FIND_EDGES)
-    edges_arr = np.array(edges, dtype=np.float32) / 255.0
+    edges_arr = np.asarray(edges, dtype=np.float32) / 255.0
     edge_mask = edges_arr > 0.16
 
-    arr = np.array(img, dtype=np.float32) / 255.0
-    lum = 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
+    arr = np.asarray(img, dtype=np.float32) / 255.0
+    lum = arr @ _LUMA_WEIGHTS
 
-    dark_ink = edge_mask & (lum < 0.40)
-    light_surround = edge_mask & (lum >= 0.40)
+    # Single per-pixel gain map: 0.75 on dark ink, 1.10 on the lighter side of an
+    # edge, 1.0 everywhere else. Applied in one pass over all three channels.
+    gain = np.where(edge_mask, np.where(lum < 0.40, 0.75, 1.10), 1.0).astype(np.float32)
+    arr *= gain[..., None]
+    np.clip(arr, 0.0, 1.0, out=arr)
 
-    for c in range(3):
-        arr[..., c][dark_ink] = np.clip(arr[..., c][dark_ink] * 0.75, 0.0, 1.0)
-        arr[..., c][light_surround] = np.clip(arr[..., c][light_surround] * 1.10, 0.0, 1.0)
-
-    res = Image.fromarray((arr * 255).astype(np.uint8))
+    res = Image.fromarray(np.rint(arr * 255).astype(np.uint8))
     return res.filter(ImageFilter.UnsharpMask(radius=1.0, percent=115, threshold=3))
 
 
