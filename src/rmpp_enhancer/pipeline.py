@@ -16,9 +16,10 @@ import numpy as np
 
 from rmpp_enhancer.profiles import DEFAULT_LUT_PATH
 
+DISABLE_ACCEL = os.environ.get("RMPP_DISABLE_ACCELERATOR", "0") in ("1", "true", "True")
 try:
     from rmpp_enhancer import _accelerator
-    HAS_ACCELERATOR = _accelerator.is_available()
+    HAS_ACCELERATOR = _accelerator.is_available() and not DISABLE_ACCEL
 except (ImportError, AttributeError):
     HAS_ACCELERATOR = False
 
