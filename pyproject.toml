@@ -26,6 +26,15 @@ dev = [
     "pytest>=8.0.0",
 ]
 
+[tool.ruff]
+# Target the oldest supported interpreter so version-specific lints apply.
+target-version = "py39"
+
+[tool.ruff.lint]
+# Correctness rules only. Style is deliberately not enforced: the codebase
+# predates this config and reformatting it would bury real findings in churn.
+select = ["F", "E9", "B", "RUF013"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

@@ -315,6 +315,30 @@ uv run pytest
 
 `pytest` is declared in the `dev` dependency group, so `uv run` installs it automatically.
 
+The suite is split by what it protects:
+
+| file | covers |
+| --- | --- |
+| `test_behaviour_formats.py` | every documented input format, end to end, plus bookmarks |
+| `test_behaviour_invariants.py` | properties that hold for *all* 24 layout combinations |
+| `test_behaviour_options.py` | each option having a visible effect |
+| `test_behaviour_cli.py` | the command lines a user actually types |
+| `test_behaviour_errors.py` | bad input failing loudly instead of writing a wrong PDF |
+| `test_layout.py`, `test_extractor.py`, `test_pipeline.py`, … | unit-level detail |
+
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
+pull request:
+
+- **lint** — `ruff` with a correctness-only rule set, and `uv lock --check`.
+- **test** — the full suite on Python 3.9 through 3.13, plus macOS on 3.13.
+- **artifacts** — regenerates the `.cube` profile, the LUT visualization and the
+  benchmark comparisons, then fails if any committed file changed. The pipeline
+  is deterministic, so a diff here means an unintended change in output.
+- **package** — builds the wheel, installs it into a clean environment and
+  converts a real page with the installed command.
+
 ---
 
 ## License

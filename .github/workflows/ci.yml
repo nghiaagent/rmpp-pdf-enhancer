@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Ruff
+        run: uv run --with ruff ruff check src tests scripts
+      - name: Lock file is up to date
+        run: uv lock --check
+
+  test:
+    name: test ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The full range promised by requires-python, on Linux; plus the
+        # newest on macOS, which is what the project is developed against.
+        os: [ubuntu-latest]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python: "3.13"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - name: Test
+        run: uv run --python ${{ matrix.python }} pytest -q --durations=10
+
+  artifacts:
+    name: committed artifacts are reproducible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Regenerate the colour profile
+        run: uv run python scripts/generate_canvas_color_lut.py
+      - name: Regenerate the LUT visualization
+        run: uv run --with matplotlib python scripts/generate_lut_viz.py
+      - name: Regenerate the benchmark comparisons
+        run: uv run python scripts/generate_illustration_comparisons.py
+      - name: Nothing should have changed
+        run: |
+          if ! git diff --quiet; then
+            echo "::error::Generated artifacts differ from the committed ones."
+            git diff --stat
+            exit 1
+          fi
+          echo "All generated artifacts reproduce byte-for-byte."
+
+  package:
+    name: package installs and runs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Build wheel and sdist
+        run: uv build
+      - name: Install the wheel into a clean environment
+        run: uv tool install --force dist/*.whl
+      - name: Smoke test the installed command
+        run: |
+          rmpp-pdf-enhancer --version
+          rmpp-pdf-enhancer --help > /dev/null
+          python -c "
+          from PIL import Image
+          Image.new('RGB', (600, 840), (240, 240, 235)).save('page.png')
+          "
+          rmpp-pdf-enhancer page.png -o out.pdf
+          test -s out.pdf && echo "Installed CLI produced a PDF."
