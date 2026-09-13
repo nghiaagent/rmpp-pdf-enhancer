@@ -178,10 +178,10 @@ uv run python scripts/generate_illustration_comparisons.py
 Run the automated test suite with `uv`:
 
 ```bash
-uv run --with pytest pytest tests/
-# Or using the built-in unittest runner:
-uv run python -m unittest discover tests
+uv run pytest
 ```
+
+`pytest` is declared in the `dev` dependency group, so `uv run` installs it automatically.
 
 ---
 
