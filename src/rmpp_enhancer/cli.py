@@ -15,11 +15,7 @@ from rmpp_enhancer.extractor import extract_document
 from rmpp_enhancer.pdf_builder import compile_pdf
 from rmpp_enhancer.pipeline import (
     EnhancerConfig,
-    HAS_ACCELERATOR,
-    load_3d_lut,
     process_and_save_page,
-    process_image,
-    save_page_jpeg,
 )
 
 
@@ -68,21 +64,12 @@ def enhance_document(
         print("Warning: No pages found to process.")
         return ""
 
-    # Preload LUT into memory before spawning threads
-    if config.color_correction:
-        load_3d_lut(config.lut_path)
-
     work_dir = f"/tmp/rmpp_proc_{int(time.time() * 1000)}"
     os.makedirs(work_dir, exist_ok=True)
 
     print(f"⚡ Processing {total_input_pages} pages with {workers} workers...")
     print(f"   Settings: Quality Q{config.quality}, Subsampling={'4:4:4' if config.subsampling == 0 else '4:2:0'}")
     print(f"   LUT Correction: {'ON' if config.color_correction else 'OFF'} | Edge Inking: {'ON' if config.edge_inking else 'OFF'}")
-    if HAS_ACCELERATOR:
-        print("   Accelerator: Rust PyO3 (SIMD Lanczos + GIL-released)")
-    else:
-        print("   Accelerator: Pure Python fallback")
-
 
     tasks = [(i, page_item, work_dir, config) for i, page_item in enumerate(doc.pages)]
 
@@ -160,7 +147,7 @@ def main():
         print("No valid input files found to process.")
         sys.exit(0)
 
-    print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro Universal Optimizer")
+    print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro PDF enhancer")
     print(f"Total targets to process: {len(targets)}")
 
     for target in targets:
