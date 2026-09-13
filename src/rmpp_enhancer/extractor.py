@@ -12,14 +12,32 @@ Supports:
 import io
 import os
 import re
+import threading
 import zipfile
 from dataclasses import dataclass
-from typing import Callable, Generator, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 from PIL import Image
 import pymupdf
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif"}
+
+
+def is_image_member(name: str) -> bool:
+    """True for archive/directory entries that are real page images.
+
+    Filters out macOS resource-fork sidecars (``__MACOSX/._page.jpg``) and other
+    dot-files, which carry image extensions but are not decodable images.
+    """
+    if name.endswith("/"):
+        return False
+    parts = name.split("/")
+    if "__MACOSX" in parts:
+        return False
+    basename = parts[-1]
+    if basename.startswith("."):
+        return False
+    return os.path.splitext(basename)[1].lower() in IMAGE_EXTENSIONS
 
 
 def natural_sort_key(s: str):
@@ -53,8 +71,34 @@ def _load_image_from_zip(zip_path: str, member_name: str) -> Image.Image:
                 return im.copy()
 
 
-def _load_image_from_pdf(pdf_path: str, page_idx: int) -> Image.Image:
+_PDF_HANDLES = threading.local()
+
+
+def _get_pdf(pdf_path: str) -> pymupdf.Document:
+    """Returns a per-thread open handle for ``pdf_path``.
+
+    Pages are loaded lazily and concurrently, so without this every page would
+    re-parse the whole PDF cross-reference table. Only one document is kept per
+    thread (documents are processed one at a time), so file handles stay bounded.
+    """
+    cached_path = getattr(_PDF_HANDLES, "path", None)
+    if cached_path == pdf_path:
+        return _PDF_HANDLES.doc
+
+    old = getattr(_PDF_HANDLES, "doc", None)
+    if old is not None:
+        old.close()
+    _PDF_HANDLES.path = None
+    _PDF_HANDLES.doc = None
+
     doc = pymupdf.open(pdf_path)
+    _PDF_HANDLES.path = pdf_path
+    _PDF_HANDLES.doc = doc
+    return doc
+
+
+def _load_image_from_pdf(pdf_path: str, page_idx: int) -> Image.Image:
+    doc = _get_pdf(pdf_path)
     page = doc[page_idx]
 
     # Check if page is a pure single full-page scan without text or rotation
@@ -70,7 +114,6 @@ def _load_image_from_pdf(pdf_path: str, page_idx: int) -> Image.Image:
                     base_img = doc.extract_image(imgs[0][0])
                     if base_img["width"] >= 600 and base_img["height"] >= 600:
                         img_bytes = base_img["image"]
-                        doc.close()
                         with Image.open(io.BytesIO(img_bytes)) as im:
                             return im.copy()
 
@@ -86,7 +129,6 @@ def _load_image_from_pdf(pdf_path: str, page_idx: int) -> Image.Image:
 
     mat = pymupdf.Matrix(scale, scale)
     pix = page.get_pixmap(matrix=mat, alpha=False)
-    doc.close()
     return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
 
@@ -105,7 +147,7 @@ def extract_from_directory(dir_path: str) -> ExtractedDocument:
             subdir_path = os.path.join(dir_path, sdir)
             files = [
                 f for f in sorted(os.listdir(subdir_path), key=natural_sort_key)
-                if os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS
+                if is_image_member(f)
             ]
             if files:
                 chapters.append((sdir, page_num))
@@ -123,7 +165,7 @@ def extract_from_directory(dir_path: str) -> ExtractedDocument:
     # Also handle flat files in root directory
     root_files = [
         f for f in sorted(os.listdir(dir_path), key=natural_sort_key)
-        if os.path.isfile(os.path.join(dir_path, f)) and os.path.splitext(f)[1].lower() in IMAGE_EXTENSIONS
+        if os.path.isfile(os.path.join(dir_path, f)) and is_image_member(f)
     ]
     if root_files:
         start_num = len(pages) + 1
@@ -149,10 +191,7 @@ def extract_from_zip(archive_path: str) -> ExtractedDocument:
     chapters: List[Tuple[str, int]] = []
 
     with zipfile.ZipFile(archive_path, "r") as zf:
-        members = [
-            m for m in zf.namelist()
-            if not m.endswith("/") and os.path.splitext(m)[1].lower() in IMAGE_EXTENSIONS
-        ]
+        members = [m for m in zf.namelist() if is_image_member(m)]
 
     members.sort(key=natural_sort_key)
 
@@ -168,6 +207,7 @@ def extract_from_zip(archive_path: str) -> ExtractedDocument:
                 chapters.append((current_chapter, page_num))
         else:
             ch_name = None
+            current_chapter = None
 
         pages.append(
             PageItem(
