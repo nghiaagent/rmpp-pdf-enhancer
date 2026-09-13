@@ -400,7 +400,9 @@ pub fn extract_from_pdf<P: AsRef<Path>>(pdf_path: P) -> Result<ExtractedDocument
                                                         if let Ok(img) =
                                                             image::load_from_memory(&stream.content)
                                                         {
-                                                            return Ok(img);
+                                                            if img.width() >= 600 && img.height() >= 600 {
+                                                                return Ok(img);
+                                                            }
                                                         }
                                                     }
 
@@ -411,7 +413,9 @@ pub fn extract_from_pdf<P: AsRef<Path>>(pdf_path: P) -> Result<ExtractedDocument
                                                         if let Ok(img) =
                                                             image::load_from_memory(&decompressed)
                                                         {
-                                                            return Ok(img);
+                                                            if img.width() >= 600 && img.height() >= 600 {
+                                                                return Ok(img);
+                                                            }
                                                         }
                                                     }
                                                 }
