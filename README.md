@@ -22,7 +22,7 @@ Input PDF / archive / scans (.pdf, .cbz, .zip, folder)
 [1] Universal extractor (extracts image streams / renders vector pages + TOC)
   │
   ▼
-[2] Scaling (1:1 pixel mapping to RMPP at 2160px height @ 229 PPI Lanczos)
+[2] Sheet layout (N source pages per row, spreads kept whole, Lanczos to 229 PPI)
   │
   ▼
 [3] Calibrated 3D LUT 
@@ -160,6 +160,78 @@ options:
   --batch               Treat directory contents as separate sub-documents/chapters (default: False)
   -v, --version         Show program's version number and exit
 ```
+
+---
+
+## Multi-page sheets
+
+One output sheet can carry several source pages side by side -- two manga pages
+across a landscape sheet, or three tall strips across a portrait one.
+
+```bash
+# Two pages per landscape sheet, the classic manga spread view
+rmpp-pdf-enhancer "Volume01.cbz" --per-row 2 --orientation landscape
+
+# Let the packer choose the row width that wastes least
+rmpp-pdf-enhancer "Volume01.cbz" --per-row auto --orientation landscape
+
+# Crop to fill the panel instead of letterboxing
+rmpp-pdf-enhancer "Scans/" --per-row 2 --fit fill
+```
+
+### Choosing the row width
+
+`--per-row auto` picks the row whose combined aspect best matches the sheet,
+which is the row that wastes least. For a page of aspect `r` on a sheet of
+aspect `R` that is `N ~= R/r`:
+
+| source page | portrait sheet (3:4) | landscape sheet (4:3) |
+| --- | --- | --- |
+| manga 1500x2100 | 1 per row (4.8% waste) | 2 per row (6.7% waste) |
+| tall strip 1:4 | 3 per row (0.0% waste) | 5 per row (6.2% waste) |
+| wide panorama 4:1 | 1 per row | 1 per row |
+
+Layouts are always a single row, never a grid. Waste is scale-invariant across
+grids -- 1x1, 2x2 and 3x3 all waste exactly the same -- so "minimise waste"
+cannot choose between them. Restricted to one row the minimum is unique and
+`auto` is well defined.
+
+`--per-row 1` with no `--orientation` is the default and leaves every page at
+its own size, exactly as before this feature existed.
+
+### Double-page spreads
+
+A spread is one artwork across two facing pages; split across a sheet boundary
+it reads as two broken halves. Spreads are detected from, strongest first:
+
+1. **`ComicInfo.xml`** -- the metadata file inside most `.cbz` archives marks
+   spreads with `DoublePage="true"` and declares reading order with
+   `<Manga>YesAndRightToLeft</Manga>`. Authoritative when present.
+2. **Aspect ratio** -- an image wider than it is tall is a spread already joined
+   into one file. This is the whole of Mihon's and TachiyomiJ2K's detector.
+3. **Filename** -- `012-013.jpg` names both pages it covers.
+
+A detected spread claims two adjacent cells and so can never be cut in half.
+Pass `--no-keep-spreads` to disable this and pack more tightly.
+
+Re-pairing a spread that was *split into two separate files* is deliberately not
+attempted -- no mainstream reader does it, because pairing parity cannot be
+recovered reliably. Mihon and TachiyomiJ2K instead expose a manual shift, and so
+does this tool: if a volume's spreads land on the wrong parity, pass
+`--shift-pages` to offset the pairing by one page.
+
+### Reading direction
+
+`--reading-direction auto` (the default) resolves in this order:
+
+1. An explicit `--reading-direction ltr|rtl` always wins.
+2. Whatever `ComicInfo.xml` declares, so a volume marked `<Manga>No</Manga>` is
+   laid out left-to-right even under the default.
+3. **Right-to-left**, because an archive carrying no metadata at all is far more
+   likely to be manga than not.
+
+Under `rtl` the first page of a row sits on the right, and a part-filled row
+leaves its blank cells on the left.
 
 ---
 

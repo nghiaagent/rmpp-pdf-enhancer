@@ -62,6 +62,17 @@ The Paper Pro CPU uses a simple runtime bilinear scalar when viewing PDFs with a
 - **Landscape ($w > h$)**: Scaled to **2160 px** width or **1620 px** height.
 - **Density metadata**: Stamped with exact native density `(229, 229) DPI`.
 
+### Stage 2b: Sheet layout (multi-page rows)
+
+When more than one source page shares an output sheet, the row is composed here — after per-page geometry, **before** the LUT and the inking filter. That ordering is forced by two things:
+
+1. **Inking is resolution-dependent.** `FIND_EDGES` and the radius-1.0 unsharp mask are tuned in *output* pixels. Inking a page at source resolution and then downscaling it into a half-width cell resamples the ink away and turns the unsharp halos into artifacts. Measured on synthetic line art downscaled into a 2-up cell, inking last retains **7.3% more edge energy** and **9% more contrast** than inking first.
+2. **The LUT is a non-linear map.** Applying it after resampling compensates the pixel that is actually displayed, rather than a pixel that later gets averaged with its neighbours.
+
+Composing first is also cheaper: the LUT and inking run once per *sheet* rather than once per source page, so a 2-up volume does half the correction work.
+
+Row width is chosen by minimising waste over single-row layouts only. Grids are excluded deliberately — waste is scale-invariant across grids ($1\times1$, $2\times2$ and $3\times3$ are all identical), so the objective cannot rank them. Within a single row the minimum is unique, at $N \approx R/r$ for sheet aspect $R$ and page aspect $r$.
+
 ### Stage 3: OKLab v3 3D LUT (`rmpp_canvas_color.cube`)
 The core color grading operates in **OKLab**, a perceptually uniform color space where lightness ($L$), green-red opponent ($a$), and blue-yellow opponent ($b$) correlate directly with human visual perception:
 
