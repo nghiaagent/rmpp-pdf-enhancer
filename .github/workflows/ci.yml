@@ -49,31 +49,34 @@ jobs:
       - name: Test
         run: uv run --python ${{ matrix.python }} pytest -q --durations=10
 
-  artifacts:
-    name: committed artifacts are reproducible
+  scripts:
+    name: generator scripts run
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Regenerate the colour profile
-        run: uv run python scripts/generate_canvas_color_lut.py
-      - name: Regenerate the LUT visualization
-        run: uv run --with matplotlib python scripts/generate_lut_viz.py
-      - name: Regenerate the benchmark comparisons
-        run: uv run python scripts/generate_illustration_comparisons.py
-      - name: Nothing should have changed
-        # The comparison PDF is excluded: img2pdf derives the document /ID from
-        # the current time, so two runs in different seconds differ by those
-        # bytes alone. Its page images are covered by the .jpg checks above.
+      # These only check the scripts execute and produce output. Whether the
+      # committed profile still matches its generator is asserted numerically
+      # in tests/test_generated_artifacts.py, which runs on every platform in
+      # the matrix. A byte comparison here would fail on any machine but the
+      # one that generated the files: the .cube is written at six decimals so
+      # last-ulp float differences flip its final digit, and the rendered
+      # images shift by ~1 LSB between libjpeg and matplotlib versions.
+      - name: Colour profile generator
         run: |
-          if ! git diff --quiet -- . ':!docs/images/*.pdf'; then
-            echo "::error::Generated artifacts differ from the committed ones."
-            git diff --stat -- . ':!docs/images/*.pdf'
-            exit 1
-          fi
-          echo "All deterministic artifacts reproduce byte-for-byte."
+          uv run python scripts/generate_canvas_color_lut.py
+          test -s src/rmpp_enhancer/profiles/rmpp_canvas_color.cube
+      - name: LUT visualization generator
+        run: |
+          uv run --with matplotlib python scripts/generate_lut_viz.py
+          test -s docs/images/cube_lut_visualization.png
+      - name: Benchmark comparison generator
+        run: |
+          uv run python scripts/generate_illustration_comparisons.py --out-dir "$RUNNER_TEMP/cmp"
+          test -s "$RUNNER_TEMP/cmp/Illustration_PaperPro_Comparison.pdf"
+          test "$(ls -1 "$RUNNER_TEMP/cmp"/*.jpg | wc -l)" -eq 7
 
   package:
     name: package installs and runs
@@ -88,12 +91,15 @@ jobs:
       - name: Install the wheel into a clean environment
         run: uv tool install --force dist/*.whl
       - name: Smoke test the installed command
+        # uv tool install isolates the CLI, so the runner's python has no
+        # Pillow. Use a committed asset rather than generating a fixture.
         run: |
           rmpp-pdf-enhancer --version
           rmpp-pdf-enhancer --help > /dev/null
-          python -c "
-          from PIL import Image
-          Image.new('RGB', (600, 840), (240, 240, 235)).save('page.png')
-          "
-          rmpp-pdf-enhancer page.png -o out.pdf
-          test -s out.pdf && echo "Installed CLI produced a PDF."
+          rmpp-pdf-enhancer assets/benchmark_illustrations/01_colorcard_target.png \
+            -o "$RUNNER_TEMP/out.pdf"
+          test -s "$RUNNER_TEMP/out.pdf"
+          rmpp-pdf-enhancer assets/benchmark_illustrations \
+            -o "$RUNNER_TEMP/sheets.pdf" --per-row 2 --orientation landscape
+          test -s "$RUNNER_TEMP/sheets.pdf"
+          echo "Installed CLI produced both a single-page and a 2-up PDF."

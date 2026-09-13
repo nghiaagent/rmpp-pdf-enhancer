@@ -300,8 +300,16 @@ uv run python scripts/generate_canvas_color_lut.py
 uv run --with matplotlib python scripts/generate_lut_viz.py
 ```
 
-All three are deterministic: re-running them on an unmodified checkout
-reproduces the committed files byte-for-byte.
+Re-running them on an unmodified checkout reproduces the committed files
+byte-for-byte **on the same platform**. Across platforms the bytes differ
+without anything being wrong: the `.cube` is written at six decimals, so
+last-ulp floating point differences flip the final digit on about half its
+lines, and the rendered images shift by roughly one LSB between libjpeg and
+matplotlib versions. The profile is therefore checked numerically against its
+generator rather than byte-wise, and the images are not compared at all — a
+genuine pipeline change moved them by a mean of 0.49 per channel, the same
+magnitude as cross-platform encoding noise, so no useful threshold exists.
+Pipeline correctness is covered directly by the behaviour suite instead.
 
 ---
 
@@ -324,6 +332,7 @@ The suite is split by what it protects:
 | `test_behaviour_options.py` | each option having a visible effect |
 | `test_behaviour_cli.py` | the command lines a user actually types |
 | `test_behaviour_errors.py` | bad input failing loudly instead of writing a wrong PDF |
+| `test_generated_artifacts.py` | the committed colour profile still matching its generator |
 | `test_layout.py`, `test_extractor.py`, `test_pipeline.py`, … | unit-level detail |
 
 ### Continuous integration
@@ -333,9 +342,9 @@ pull request:
 
 - **lint** — `ruff` with a correctness-only rule set, and `uv lock --check`.
 - **test** — the full suite on Python 3.9 through 3.13, plus macOS on 3.13.
-- **artifacts** — regenerates the `.cube` profile, the LUT visualization and the
-  benchmark comparisons, then fails if any committed file changed. The pipeline
-  is deterministic, so a diff here means an unintended change in output.
+- **scripts** — runs all three generator scripts and checks they produce output.
+  Whether the committed profile still matches its generator is asserted
+  numerically by `test_generated_artifacts.py`, on every platform in the matrix.
 - **package** — builds the wheel, installs it into a clean environment and
   converts a real page with the installed command.
 
