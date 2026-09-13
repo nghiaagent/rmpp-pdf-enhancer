@@ -16,6 +16,12 @@ import numpy as np
 
 from rmpp_enhancer.profiles import DEFAULT_LUT_PATH
 
+try:
+    from rmpp_enhancer import _accelerator
+    HAS_ACCELERATOR = _accelerator.is_available()
+except (ImportError, AttributeError):
+    HAS_ACCELERATOR = False
+
 
 @dataclass
 class EnhancerConfig:
@@ -161,3 +167,35 @@ def save_page_jpeg(img: Image.Image, dst_path: str, config: EnhancerConfig) -> s
         dpi=(config.dpi, config.dpi),
     )
     return dst_path
+
+
+def process_and_save_page(img: Image.Image, dst_path: str, config: EnhancerConfig) -> str:
+    """
+    Enhances and encodes a single page image directly to JPEG.
+
+    When the compiled PyO3 accelerator is available, delegates resizing, 3D LUT
+    evaluation, inking arithmetic, and JPEG encoding to Rust with GIL released
+    for lock-free multi-core parallelism. Otherwise falls back to pure Python.
+    """
+    if HAS_ACCELERATOR:
+        rgb = prepare_rgb(img)
+        w, h = rgb.size
+        _accelerator.enhance_page_to_jpeg(
+            w,
+            h,
+            rgb.tobytes(),
+            dst_path,
+            quality=config.quality,
+            subsampling=config.subsampling,
+            color_correction=config.color_correction,
+            edge_inking=config.edge_inking,
+            custom_lut_path=config.lut_path,
+            target_width=config.target_width,
+            target_height=config.target_height,
+            dpi=config.dpi,
+        )
+        return dst_path
+
+    processed = process_image(img, config)
+    return save_page_jpeg(processed, dst_path, config)
+

@@ -15,7 +15,9 @@ from rmpp_enhancer.extractor import extract_document
 from rmpp_enhancer.pdf_builder import compile_pdf
 from rmpp_enhancer.pipeline import (
     EnhancerConfig,
+    HAS_ACCELERATOR,
     load_3d_lut,
+    process_and_save_page,
     process_image,
     save_page_jpeg,
 )
@@ -24,11 +26,9 @@ from rmpp_enhancer.pipeline import (
 def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
     page_idx, page_item, work_dir, config = args
     img = page_item.load_image()
-    processed_img = process_image(img, config)
-
     dst_name = f"page_{page_idx:05d}.jpg"
     dst_path = os.path.join(work_dir, dst_name)
-    save_page_jpeg(processed_img, dst_path, config)
+    process_and_save_page(img, dst_path, config)
     return dst_path
 
 
@@ -78,6 +78,11 @@ def enhance_document(
     print(f"⚡ Processing {total_input_pages} pages with {workers} workers...")
     print(f"   Settings: Quality Q{config.quality}, Subsampling={'4:4:4' if config.subsampling == 0 else '4:2:0'}")
     print(f"   LUT Correction: {'ON' if config.color_correction else 'OFF'} | Edge Inking: {'ON' if config.edge_inking else 'OFF'}")
+    if HAS_ACCELERATOR:
+        print("   Accelerator: Rust PyO3 (SIMD Lanczos + GIL-released)")
+    else:
+        print("   Accelerator: Pure Python fallback")
+
 
     tasks = [(i, page_item, work_dir, config) for i, page_item in enumerate(doc.pages)]
 
