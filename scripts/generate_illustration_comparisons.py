@@ -23,7 +23,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from rmpp_enhancer.pipeline import (
     EnhancerConfig,
-    process_and_save_page,
+    load_3d_lut,
+    apply_edge_directed_inking,
 )
 from rmpp_enhancer.pdf_builder import compile_pdf
 
@@ -110,29 +111,15 @@ def prepare_original_panel(
 def create_comparison_page(
     spec: Dict,
     config: EnhancerConfig,
+    pil_lut,
 ) -> Image.Image:
     """Create a 2160 x 1620 side-by-side comparison page."""
     # 1. Prepare original left panel (1080 x 1620)
     orig_panel = prepare_original_panel(spec["file"], fit_mode=spec["fit_mode"])
 
-    # 2. Process right panel (1080 x 1620) with Rust PyO3 accelerator
-    comp_config = EnhancerConfig(
-        quality=config.quality,
-        subsampling=config.subsampling,
-        color_correction=config.color_correction,
-        edge_inking=config.edge_inking,
-        lut_path=config.lut_path,
-        target_width=PANEL_W,
-        target_height=PANEL_H,
-    )
-    temp_panel_path = f"/tmp/rmpp_comp_panel_{os.getpid()}.jpg"
-    process_and_save_page(orig_panel, temp_panel_path, comp_config)
-    with Image.open(temp_panel_path) as im:
-        comp_panel = im.copy()
-    try:
-        os.remove(temp_panel_path)
-    except OSError:
-        pass
+    # 2. Process right panel (1080 x 1620) with 3D LUT + edge inking
+    lut_applied = orig_panel.filter(pil_lut) if pil_lut else orig_panel
+    comp_panel = apply_edge_directed_inking(lut_applied)
 
     # 3. Create full canvas (2160 x 1620)
     canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (255, 255, 255))
@@ -169,6 +156,7 @@ def create_comparison_page(
 
 def main():
     config = EnhancerConfig(quality=82, subsampling=0)
+    pil_lut = load_3d_lut(config.lut_path)
 
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     asset_dir = os.path.join(repo_root, "assets", "benchmark_illustrations")
@@ -248,6 +236,7 @@ def main():
         page_img = create_comparison_page(
             spec=sc,
             config=config,
+            pil_lut=pil_lut,
         )
 
         jpeg_filename = f"{sc['id']}_comparison.jpg"
