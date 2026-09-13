@@ -55,22 +55,55 @@ For more rationale, see [Architecture and color science guide](docs/architecture
 
 ---
 
+## Prerequisites
+
+You need [`uv`](https://docs.astral.sh/uv/) to install, run, or build this app.
+
+To install `uv`, follow the [official installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+---
+
 ## Installation and execution
 
-### Option A: Direct execution with `uvx`
-Run directly from GitHub:
+### Option A: Run directly with `uvx` (no install required)
+Execute directly from GitHub:
 ```bash
 uvx --from git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git rmpp-pdf-enhancer "Document.pdf"
 ```
 
-### Option B: Install via `uv tool`
-Install as a persistent system-wide CLI command:
+### Option B: Install as a global CLI command with `uv tool`
+Install `rmpp-pdf-enhancer` into an isolated global environment:
 ```bash
 # Directly from GitHub:
 uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
 
-# Or from local clone:
-uv tool install .
+# Or from a local clone:
+git clone https://github.com/nghiaagent/rmpp-pdf-enhancer.git
+cd rmpp-pdf-enhancer
+uv tool install --force .
+```
+
+---
+
+## Building from source and development
+
+The project is packaged as a pure-Python application using [`hatchling`](https://hatch.pypa.io/latest/) as its build backend.
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/nghiaagent/rmpp-pdf-enhancer.git
+cd rmpp-pdf-enhancer
+```
+
+### 2. Set up the development environment
+Install dependencies and sync the virtual environment automatically:
+```bash
+uv sync
+```
+
+### 3. Run the CLI in development
+```bash
+uv run rmpp-pdf-enhancer "Document.pdf"
 ```
 
 ---
@@ -79,8 +112,6 @@ uv tool install .
 
 ### 1. Optimize an existing PDF document
 ```bash
-uv run rmpp-pdf-enhancer "Linear_Algebra_Textbook.pdf"
-# If installed as an CLI
 rmpp-pdf-enhancer "Linear_Algebra_Textbook.pdf"
 ```
 Produces `Linear_Algebra_Textbook_PaperPro_Optimized.pdf`.
@@ -88,22 +119,16 @@ Running again in the same directory will skip already-generated files (override 
 
 ### 2. Optimize a comic archive (`.cbz` or `.zip`)
 ```bash
-uv run rmpp-pdf-enhancer "OnePiece_Vol100.cbz"
-# If installed as an CLI
 rmpp-pdf-enhancer "OnePiece_Vol100.cbz"
 ```
 
 ### 3. Process a folder of images
 ```bash
-uv run rmpp-pdf-enhancer ./scanned_pages/
-# If installed as an CLI
 rmpp-pdf-enhancer ./scanned_pages/
 ```
 
 ### 4. Batch process a directory
 ```bash
-uv run rmpp-pdf-enhancer ./DocumentsFolder/ --batch
-# If installed as an CLI
 rmpp-pdf-enhancer ./DocumentsFolder/ --batch
 ```
 
@@ -153,6 +178,8 @@ uv run python scripts/generate_illustration_comparisons.py
 Run the automated test suite with `uv`:
 
 ```bash
+uv run --with pytest pytest tests/
+# Or using the built-in unittest runner:
 uv run python -m unittest discover tests
 ```
 

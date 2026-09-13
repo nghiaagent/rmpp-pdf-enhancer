@@ -15,16 +15,20 @@ from rmpp_enhancer.extractor import extract_document
 from rmpp_enhancer.pdf_builder import compile_pdf
 from rmpp_enhancer.pipeline import (
     EnhancerConfig,
-    process_and_save_page,
+    load_3d_lut,
+    process_image,
+    save_page_jpeg,
 )
 
 
 def process_single_page(args: Tuple[int, any, str, EnhancerConfig]) -> str:
     page_idx, page_item, work_dir, config = args
     img = page_item.load_image()
+    processed_img = process_image(img, config)
+
     dst_name = f"page_{page_idx:05d}.jpg"
     dst_path = os.path.join(work_dir, dst_name)
-    process_and_save_page(img, dst_path, config)
+    save_page_jpeg(processed_img, dst_path, config)
     return dst_path
 
 
@@ -63,6 +67,10 @@ def enhance_document(
     if total_input_pages == 0:
         print("Warning: No pages found to process.")
         return ""
+
+    # Preload LUT into memory before spawning threads
+    if config.color_correction:
+        load_3d_lut(config.lut_path)
 
     work_dir = f"/tmp/rmpp_proc_{int(time.time() * 1000)}"
     os.makedirs(work_dir, exist_ok=True)
@@ -147,7 +155,7 @@ def main():
         print("No valid input files found to process.")
         sys.exit(0)
 
-    print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro PDF enhancer")
+    print(f"rmpp-pdf-enhancer v{__version__} - reMarkable Paper Pro Universal Optimizer")
     print(f"Total targets to process: {len(targets)}")
 
     for target in targets:
