@@ -4,6 +4,7 @@ End-to-end tests for sheet assembly: page grouping, bookmark remapping, output g
 
 import io
 import os
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -134,6 +135,52 @@ class TestEndToEnd(unittest.TestCase):
         self.assertLess(len(apart), len(together))
         together.close()
         apart.close()
+
+
+class TestCliFlags(unittest.TestCase):
+    """The layout flags must parse to the config values they advertise."""
+
+    def _parse(self, *argv):
+        import rmpp_enhancer.cli as cli
+
+        captured = {}
+        original = cli.enhance_document
+        cli.enhance_document = lambda *a, **k: captured.update(k) or ""
+        old_argv = sys.argv
+        sys.argv = ["rmpp-pdf-enhancer", "dummy.cbz", *argv]
+        try:
+            cli.main()
+        finally:
+            cli.enhance_document = original
+            sys.argv = old_argv
+        return captured["config"]
+
+    def test_defaults(self):
+        cfg = self._parse()
+        self.assertEqual(cfg.per_row, 1)
+        self.assertEqual(cfg.orientation, "auto")
+        self.assertEqual(cfg.fit_mode, "fit")
+        self.assertEqual(cfg.reading_direction, "auto")
+        self.assertTrue(cfg.keep_spreads_together)
+        self.assertFalse(cfg.shift_pages)
+
+    def test_keep_spreads_both_forms(self):
+        self.assertTrue(self._parse("--keep-spreads").keep_spreads_together)
+        self.assertFalse(self._parse("--no-keep-spreads").keep_spreads_together)
+
+    def test_auto_per_row_becomes_none(self):
+        self.assertIsNone(self._parse("--per-row", "auto").per_row)
+        self.assertEqual(self._parse("--per-row", "3").per_row, 3)
+
+    def test_orientation_aliases(self):
+        self.assertEqual(self._parse("--orientation", "horizontal").orientation, "landscape")
+        self.assertEqual(self._parse("--orientation", "vertical").orientation, "portrait")
+
+    def test_rejects_out_of_range_per_row(self):
+        with self.assertRaises(SystemExit):
+            self._parse("--per-row", "99")
+        with self.assertRaises(SystemExit):
+            self._parse("--per-row", "banana")
 
 
 if __name__ == "__main__":

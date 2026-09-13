@@ -245,14 +245,16 @@ def main():
         help="Page order within a row; auto reads ComicInfo.xml and falls back to rtl",
     )
     layout.add_argument(
-        "--no-keep-spreads", dest="keep_spreads", action="store_false",
-        help="Allow double-page spreads to be split across sheets",
+        # Phrased positively so the help formatter's "(default: True)" reads
+        # correctly. A bare --no-keep-spreads would print the dest's value and
+        # so claim that splitting is the default, which is the opposite.
+        "--keep-spreads", action=argparse.BooleanOptionalAction, default=True,
+        help="Keep double-page spreads whole on one sheet",
     )
     layout.add_argument(
         "--shift-pages", action="store_true",
         help="Offset pairing by one page, for volumes whose spreads land on the wrong parity",
     )
-    parser.set_defaults(keep_spreads=True)
 
     parser.add_argument("--batch", action="store_true", help="Treat directory contents as separate sub-documents/chapters")
     parser.add_argument("-v", "--version", action="version", version=f"%(prog)s {__version__}")

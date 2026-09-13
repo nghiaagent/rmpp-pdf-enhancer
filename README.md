@@ -22,7 +22,11 @@ Input PDF / archive / scans (.pdf, .cbz, .zip, folder)
 [1] Universal extractor (extracts image streams / renders vector pages + TOC)
   │
   ▼
-[2] Sheet layout (N source pages per row, spreads kept whole, Lanczos to 229 PPI)
+[2] Sheet layout and geometry scaling
+    ├── Row width matched to the sheet aspect (auto or fixed N per row)
+    ├── Double-page spreads claim a whole row, never cut in half
+    ├── Reading order from ComicInfo.xml (right-to-left by default)
+    └── 1:1 pixel mapping to 2160 x 1620 @ 229 PPI via 8-tap Lanczos
   │
   ▼
 [3] Calibrated 3D LUT 
@@ -121,52 +125,28 @@ Running again in the same directory will skip already-generated files (override 
 ```bash
 rmpp-pdf-enhancer "OnePiece_Vol100.cbz"
 ```
+Chapter folders inside the archive become PDF bookmarks, and `ComicInfo.xml` is
+read for reading direction if the archive carries one.
 
 ### 3. Process a folder of images
 ```bash
 rmpp-pdf-enhancer ./scanned_pages/
 ```
+Pages are ordered naturally (`1, 2, 10`, not `1, 10, 2`). Subfolders become chapters.
 
 ### 4. Batch process a directory
 ```bash
 rmpp-pdf-enhancer ./DocumentsFolder/ --batch
 ```
-
----
-
-## CLI options reference
-
-```text
-usage: rmpp-pdf-enhancer [-h] [-o OUTPUT] [-q QUALITY] [--subsampling {0,2}]
-                         [-w WORKERS] [-f] [--no-lut] [--no-ink]
-                         [--lut-file LUT_FILE] [--batch] [-v]
-                         inputs [inputs ...]
-
-reMarkable Paper Pro PDF enhancer
-
-positional arguments:
-  inputs                Input file(s): .pdf, .cbz, .zip, or directory of images/scans
-
-options:
-  -h, --help            Show this help message and exit
-  -o, --output OUTPUT   Output PDF file path or destination directory (default: None)
-  -q, --quality QUALITY JPEG quality (1-100, default 82)
-  --subsampling {0,2}   Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file) (default: 0)
-  -w, --workers WORKERS Number of concurrent worker threads (default: CPU count)
-  -f, --force           Force overwrite if output file already exists, and re-process already optimized files (default: False)
-  --no-lut              Disable included LUT compensation (default: False)
-  --no-ink              Disable bilateral edge-directed inking filter (default: False)
-  --lut-file LUT_FILE   Custom .cube 3D LUT profile path (default: None)
-  --batch               Treat directory contents as separate sub-documents/chapters (default: False)
-  -v, --version         Show program's version number and exit
-```
+Each archive or subfolder is optimized into its own PDF, rather than being merged into one.
 
 ---
 
 ## Multi-page sheets
 
-One output sheet can carry several source pages side by side -- two manga pages
-across a landscape sheet, or three tall strips across a portrait one.
+By default one source page becomes one output page. `--per-row` puts several
+source pages side by side on a single sheet instead — two manga pages across a
+landscape sheet, or three tall strips across a portrait one.
 
 ```bash
 # Two pages per landscape sheet, the classic manga spread view
@@ -183,7 +163,7 @@ rmpp-pdf-enhancer "Scans/" --per-row 2 --fit fill
 
 `--per-row auto` picks the row whose combined aspect best matches the sheet,
 which is the row that wastes least. For a page of aspect `r` on a sheet of
-aspect `R` that is `N ~= R/r`:
+aspect `R` that is `N ≈ R/r`:
 
 | source page | portrait sheet (3:4) | landscape sheet (4:3) |
 | --- | --- | --- |
@@ -192,30 +172,47 @@ aspect `R` that is `N ~= R/r`:
 | wide panorama 4:1 | 1 per row | 1 per row |
 
 Layouts are always a single row, never a grid. Waste is scale-invariant across
-grids -- 1x1, 2x2 and 3x3 all waste exactly the same -- so "minimise waste"
-cannot choose between them. Restricted to one row the minimum is unique and
-`auto` is well defined.
+grids — 1×1, 2×2 and 3×3 all waste exactly the same — so "minimise waste" cannot
+choose between them. Restricted to one row the minimum is unique and `auto` is
+well defined.
 
-`--per-row 1` with no `--orientation` is the default and leaves every page at
-its own size, exactly as before this feature existed.
+`--per-row 1` with no `--orientation` is the default and leaves every page at its
+own size, which is the behaviour from before this option existed.
+
+### Fitting pages into cells
+
+`--fit` decides what to give up when a page and its cell disagree on aspect:
+
+| mode | gives up | typical cost |
+| --- | --- | --- |
+| `fit` (default) | screen space, as white margins | ~7% of the sheet blank |
+| `fill` | image, cropped from the long edge | ~6% of each page cut |
+
+Neither is free, and which edge gets trimmed matters more than the percentage.
+On a landscape sheet `fill` trims the **sides** of a portrait page, which is
+where gutter art and panel edges live; on a portrait sheet it trims top and
+bottom, usually only headers and page numbers.
 
 ### Double-page spreads
 
-A spread is one artwork across two facing pages; split across a sheet boundary
-it reads as two broken halves. Spreads are detected from, strongest first:
+A spread is one artwork across two facing pages. Split across a sheet boundary
+it reads as two broken halves, so any page detected as a spread claims two
+adjacent cells and can never be cut. Detection uses, strongest signal first:
 
-1. **`ComicInfo.xml`** -- the metadata file inside most `.cbz` archives marks
-   spreads with `DoublePage="true"` and declares reading order with
-   `<Manga>YesAndRightToLeft</Manga>`. Authoritative when present.
-2. **Aspect ratio** -- an image wider than it is tall is a spread already joined
-   into one file. This is the whole of Mihon's and TachiyomiJ2K's detector.
-3. **Filename** -- `012-013.jpg` names both pages it covers.
+1. **`ComicInfo.xml`** — the metadata file inside most `.cbz` archives marks
+   spreads with `DoublePage="true"`. Authoritative when present.
+2. **Aspect ratio** — an image wider than it is tall. This is the whole of
+   Mihon's detector (`isWideImage` is `outWidth > outHeight`) and TachiyomiJ2K's.
+3. **Filename** — `012-013.jpg` names both pages it covers.
 
-A detected spread claims two adjacent cells and so can never be cut in half.
-Pass `--no-keep-spreads` to disable this and pack more tightly.
+Because the rule is "wider than tall", it also catches landscape cover art,
+credit banners and bonus illustrations, and those are given the full row too.
+That is intentional: art should use as much of the screen as it can, and a wide
+image squeezed into a half-width cell wastes the panel. Pass `--no-keep-spreads`
+to turn the whole behaviour off and pack purely by count.
 
 Re-pairing a spread that was *split into two separate files* is deliberately not
-attempted -- no mainstream reader does it, because pairing parity cannot be
+attempted — no mainstream reader does it, because pairing parity cannot be
 recovered reliably. Mihon and TachiyomiJ2K instead expose a manual shift, and so
 does this tool: if a volume's spreads land on the wrong parity, pass
 `--shift-pages` to offset the pairing by one page.
@@ -231,14 +228,66 @@ does this tool: if a volume's spreads land on the wrong parity, pass
    likely to be manga than not.
 
 Under `rtl` the first page of a row sits on the right, and a part-filled row
-leaves its blank cells on the left.
+leaves its blank cells on the left. Direction only affects sheets holding more
+than one page; at `--per-row 1` there is nothing to order.
+
+---
+
+## CLI options reference
+
+```text
+usage: rmpp-pdf-enhancer [-h] [-o OUTPUT] [-q QUALITY] [--subsampling {0,2}]
+                         [-w WORKERS] [-f] [--no-lut] [--no-ink]
+                         [--lut-file LUT_FILE] [--per-row N|auto]
+                         [--orientation {portrait,landscape,vertical,horizontal,auto}]
+                         [--fit {fit,fill}]
+                         [--reading-direction {ltr,rtl,auto}]
+                         [--keep-spreads | --no-keep-spreads] [--shift-pages]
+                         [--batch] [-v]
+                         inputs [inputs ...]
+
+reMarkable Paper Pro PDF enhancer
+
+positional arguments:
+  inputs                Input file(s): .pdf, .cbz, .zip, or directory of images/scans
+
+options:
+  -h, --help            Show this help message and exit
+  -o, --output OUTPUT   Output PDF file path or destination directory (default: None)
+  -q, --quality QUALITY JPEG quality (1-100, default 82)
+  --subsampling {0,2}   Chroma subsampling: 0=4:4:4 (crisp text), 2=4:2:0 (smaller file) (default: 0)
+  -w, --workers WORKERS Number of concurrent worker threads (default: 8, or CPU count if lower)
+  -f, --force           Force overwrite if output file already exists, and re-process already optimized files (default: False)
+  --no-lut              Disable included LUT compensation (default: False)
+  --no-ink              Disable bilateral edge-directed inking filter (default: False)
+  --lut-file LUT_FILE   Custom .cube 3D LUT profile path (default: None)
+  --batch               Treat directory contents as separate sub-documents/chapters (default: False)
+  -v, --version         Show program's version number and exit
+
+sheet layout:
+  --per-row N|auto      Source pages side by side on each output sheet, or 'auto' to pick
+                        the row width that wastes least (default: 1)
+  --orientation {portrait,landscape,vertical,horizontal,auto}
+                        Output sheet orientation ('vertical'/'horizontal' are accepted as
+                        aliases for portrait/landscape) (default: auto)
+  --fit {fit,fill}      fit letterboxes the whole page; fill crops it to cover the cell (default: fit)
+  --reading-direction {ltr,rtl,auto}
+                        Page order within a row; auto reads ComicInfo.xml and falls back to rtl (default: auto)
+  --keep-spreads, --no-keep-spreads
+                        Keep double-page spreads whole on one sheet (default: True)
+  --shift-pages         Offset pairing by one page, for volumes whose spreads land on the
+                        wrong parity (default: False)
+```
+
+See [Multi-page sheets](#multi-page-sheets) for what the layout options do and
+when each one is worth reaching for.
 
 ---
 
 ## Benchmarking and tablet screen comparisons
 
-The repository includes scripts to regenerate the committed artifacts. Each
-writes into the repository by default; pass `--out-dir` to send output elsewhere.
+The repository includes scripts to regenerate the committed artifacts. Each one
+writes into the repository by default — pass `--out-dir` to send output elsewhere.
 
 ```bash
 # Side-by-side comparison JPEGs + PDF -> docs/images/
