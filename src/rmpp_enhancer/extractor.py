@@ -52,6 +52,15 @@ class PageItem:
     page_number: int                 # 1-indexed overall page number
     chapter_name: Optional[str]      # Optional chapter/section name for PDF bookmarks
     load_image: Callable[[], Image.Image]  # Lazy loader function to conserve memory
+    name: str = ""                   # Source filename, for spread-naming heuristics
+    # Dimensions without decoding pixels. Layout and spread detection need every
+    # page's size up front; decoding a whole volume for that would be wasteful.
+    load_size: Optional[Callable[[], Tuple[int, int]]] = None
+
+    def size(self) -> Tuple[int, int]:
+        if self.load_size is not None:
+            return self.load_size()
+        return self.load_image().size
 
 
 @dataclass
@@ -59,11 +68,38 @@ class ExtractedDocument:
     title: str
     pages: List[PageItem]
     chapters: List[Tuple[str, int]]  # (chapter_name, 1-indexed start_page_number)
+    source_path: Optional[str] = None  # Archive path, for reading ComicInfo.xml
 
 
 def _load_image_from_path(path: str) -> Image.Image:
     with Image.open(path) as im:
         return im.copy()
+
+
+def _size_from_path(path: str) -> Tuple[int, int]:
+    """Image dimensions from the header alone -- Pillow does not decode pixels."""
+    with Image.open(path) as im:
+        return im.size
+
+
+def _size_from_zip(zip_path: str, member_name: str, probe_bytes: int = 65536) -> Tuple[int, int]:
+    """Dimensions of a zipped image, reading only enough bytes for the header."""
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        with zf.open(member_name) as f:
+            head = f.read(probe_bytes)
+    try:
+        with Image.open(io.BytesIO(head)) as im:
+            return im.size
+    except Exception:
+        # Header past the probe window (rare); fall back to a full read
+        with Image.open(io.BytesIO(_read_zip_member(zip_path, member_name))) as im:
+            return im.size
+
+
+def _read_zip_member(zip_path: str, member_name: str) -> bytes:
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        with zf.open(member_name) as f:
+            return f.read()
 
 
 def _load_image_from_zip(zip_path: str, member_name: str) -> Image.Image:
@@ -154,6 +190,8 @@ def extract_from_directory(dir_path: str) -> ExtractedDocument:
                             page_number=page_num,
                             chapter_name=sdir,
                             load_image=lambda p=full_path: _load_image_from_path(p),
+                            name=fname,
+                            load_size=lambda p=full_path: _size_from_path(p),
                         )
                     )
                     page_num += 1
@@ -174,10 +212,12 @@ def extract_from_directory(dir_path: str) -> ExtractedDocument:
                     page_number=len(pages) + 1,
                     chapter_name=title if subdirs else None,
                     load_image=lambda p=full_path: _load_image_from_path(p),
+                    name=fname,
+                    load_size=lambda p=full_path: _size_from_path(p),
                 )
             )
 
-    return ExtractedDocument(title=title, pages=pages, chapters=chapters)
+    return ExtractedDocument(title=title, pages=pages, chapters=chapters, source_path=dir_path)
 
 
 def extract_from_zip(archive_path: str) -> ExtractedDocument:
@@ -210,10 +250,12 @@ def extract_from_zip(archive_path: str) -> ExtractedDocument:
                 page_number=page_num,
                 chapter_name=ch_name,
                 load_image=lambda z=archive_path, m=member: _load_image_from_zip(z, m),
+                name=member,
+                load_size=lambda z=archive_path, m=member: _size_from_zip(z, m),
             )
         )
 
-    return ExtractedDocument(title=title, pages=pages, chapters=chapters)
+    return ExtractedDocument(title=title, pages=pages, chapters=chapters, source_path=archive_path)
 
 
 def extract_from_pdf(pdf_path: str) -> ExtractedDocument:
@@ -234,16 +276,22 @@ def extract_from_pdf(pdf_path: str) -> ExtractedDocument:
     pages: List[PageItem] = []
     for i in range(total_pages):
         page_num = i + 1
+        # The rendered size follows from the page box, so it is known already
+        rect = doc[i].rect
+        scale = rmpp_fit_scale(rect.width, rect.height)
+        rendered = (max(1, round(rect.width * scale)), max(1, round(rect.height * scale)))
         pages.append(
             PageItem(
                 page_number=page_num,
                 chapter_name=None,
                 load_image=lambda p=pdf_path, idx=i: _load_image_from_pdf(p, idx),
+                name=f"page_{page_num:05d}",
+                load_size=lambda s=rendered: s,
             )
         )
     doc.close()
 
-    return ExtractedDocument(title=title, pages=pages, chapters=chapters)
+    return ExtractedDocument(title=title, pages=pages, chapters=chapters, source_path=pdf_path)
 
 
 def extract_document(input_path: str) -> ExtractedDocument:
@@ -262,7 +310,15 @@ def extract_document(input_path: str) -> ExtractedDocument:
     elif ext in IMAGE_EXTENSIONS:
         # Single image
         title = os.path.splitext(os.path.basename(input_path))[0]
-        pages = [PageItem(page_number=1, chapter_name=None, load_image=lambda: _load_image_from_path(input_path))]
-        return ExtractedDocument(title=title, pages=pages, chapters=[])
+        pages = [
+            PageItem(
+                page_number=1,
+                chapter_name=None,
+                load_image=lambda: _load_image_from_path(input_path),
+                name=os.path.basename(input_path),
+                load_size=lambda: _size_from_path(input_path),
+            )
+        ]
+        return ExtractedDocument(title=title, pages=pages, chapters=[], source_path=input_path)
     else:
         raise ValueError(f"Unsupported file format: {ext} (supported: .cbz, .zip, .pdf, image folders)")
