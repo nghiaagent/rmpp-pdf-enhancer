@@ -300,9 +300,6 @@ uv run python scripts/generate_canvas_color_lut.py
 uv run --with matplotlib python scripts/generate_lut_viz.py
 ```
 
-All three are deterministic: re-running them on an unmodified checkout
-reproduces the committed files byte-for-byte.
-
 ---
 
 ## Testing
