@@ -64,13 +64,16 @@ jobs:
       - name: Regenerate the benchmark comparisons
         run: uv run python scripts/generate_illustration_comparisons.py
       - name: Nothing should have changed
+        # The comparison PDF is excluded: img2pdf derives the document /ID from
+        # the current time, so two runs in different seconds differ by those
+        # bytes alone. Its page images are covered by the .jpg checks above.
         run: |
-          if ! git diff --quiet; then
+          if ! git diff --quiet -- . ':!docs/images/*.pdf'; then
             echo "::error::Generated artifacts differ from the committed ones."
-            git diff --stat
+            git diff --stat -- . ':!docs/images/*.pdf'
             exit 1
           fi
-          echo "All generated artifacts reproduce byte-for-byte."
+          echo "All deterministic artifacts reproduce byte-for-byte."
 
   package:
     name: package installs and runs
