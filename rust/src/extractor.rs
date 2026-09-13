@@ -424,6 +424,52 @@ pub fn extract_from_pdf<P: AsRef<Path>>(pdf_path: P) -> Result<ExtractedDocument
                     }
                 }
 
+                // Fallback: If no image stream was found (e.g. vector/text PDF),
+                // attempt rendering the page via `pdftoppm` if available on the system.
+                let temp_dir = std::env::temp_dir();
+                let temp_subdir = temp_dir.join(format!(
+                    "rmpp_render_{}_{}_{}",
+                    std::process::id(),
+                    p_num_1indexed,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos())
+                        .unwrap_or(0)
+                ));
+                if std::fs::create_dir_all(&temp_subdir).is_ok() {
+                    let prefix_path = temp_subdir.join("page");
+                    if let Ok(status) = std::process::Command::new("pdftoppm")
+                        .args([
+                            "-png",
+                            "-r",
+                            "229",
+                            "-f",
+                            &p_num_1indexed.to_string(),
+                            "-l",
+                            &p_num_1indexed.to_string(),
+                        ])
+                        .arg(&p_path)
+                        .arg(&prefix_path)
+                        .output()
+                    {
+                        if status.status.success() {
+                            if let Ok(entries) = std::fs::read_dir(&temp_subdir) {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    if path.extension().and_then(|e| e.to_str()) == Some("png") {
+                                        let img_res = image::open(&path);
+                                        let _ = std::fs::remove_dir_all(&temp_subdir);
+                                        if let Ok(img) = img_res {
+                                            return Ok(img);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let _ = std::fs::remove_dir_all(&temp_subdir);
+                }
+
                 Err(format!(
                     "Could not extract image from page {}",
                     p_num_1indexed
