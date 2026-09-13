@@ -5,7 +5,7 @@ Unit tests for side-by-side benchmark comparison generation.
 import os
 import unittest
 from PIL import Image
-from rmpp_enhancer.pipeline import EnhancerConfig, load_3d_lut
+from rmpp_enhancer.pipeline import EnhancerConfig
 from scripts.generate_illustration_comparisons import (
     create_comparison_page,
     prepare_original_panel,
@@ -20,7 +20,6 @@ class TestIllustrationComparisons(unittest.TestCase):
 
     def setUp(self):
         self.config = EnhancerConfig(quality=82, subsampling=0)
-        self.pil_lut = load_3d_lut(self.config.lut_path)
         self.test_img_path = "/tmp/test_compare_dummy.png"
 
         # Create dummy test image (300 x 300)
@@ -49,7 +48,7 @@ class TestIllustrationComparisons(unittest.TestCase):
             "fit_mode": "cover",
             "id": "dummy_test",
         }
-        page = create_comparison_page(spec, self.config, self.pil_lut)
+        page = create_comparison_page(spec, self.config)
         self.assertEqual(page.size, (CANVAS_W, CANVAS_H))
         self.assertEqual(page.size, (2160, 1620))
 

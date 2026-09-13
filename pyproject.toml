@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "rmpp-pdf-enhancer"
@@ -24,8 +24,8 @@ dependencies = [
 [project.scripts]
 rmpp-pdf-enhancer = "rmpp_enhancer.cli:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/rmpp_enhancer"]
+[tool.maturin]
+features = ["pyo3/extension-module", "pyo3/abi3-py39"]
+module-name = "rmpp_enhancer._accelerator"
+python-source = "src"
 
-[tool.hatch.build.targets.wheel.sources]
-"src/rmpp_enhancer" = "rmpp_enhancer"

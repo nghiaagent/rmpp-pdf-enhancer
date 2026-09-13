@@ -6,15 +6,14 @@ Features:
 - Calibrated 3D LUT inverse compensation (OKLab v3 color space).
 - Bilateral edge-directed inking filter to deepen dialogue line-art and counteract pigment dithering.
 - Tuned JPEG compression for fast cloud sync and minimal storage.
+- Powered unconditionally by native PyO3 Rust SIMD accelerator (_accelerator).
 """
 
-import os
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-from PIL import Image, ImageFilter
-import numpy as np
+from typing import Optional
+from PIL import Image
 
-from rmpp_enhancer.profiles import DEFAULT_LUT_PATH
+from rmpp_enhancer._accelerator import enhance_page_to_jpeg
 
 
 @dataclass
@@ -29,47 +28,6 @@ class EnhancerConfig:
     dpi: int = 229                  # Native screen density
 
 
-# Global cache for the parsed Pillow 3D LUT
-_CACHED_LUT: Optional[ImageFilter.Color3DLUT] = None
-_CACHED_LUT_PATH: Optional[str] = None
-
-
-def load_3d_lut(cube_path: Optional[str] = None) -> ImageFilter.Color3DLUT:
-    """Loads and caches a .cube 3D LUT into Pillow's Color3DLUT format."""
-    global _CACHED_LUT, _CACHED_LUT_PATH
-    actual_path = cube_path or DEFAULT_LUT_PATH
-
-    if _CACHED_LUT is not None and _CACHED_LUT_PATH == actual_path:
-        return _CACHED_LUT
-
-    if not os.path.exists(actual_path):
-        raise FileNotFoundError(f"3D LUT profile not found at {actual_path}")
-
-    lut_table = []
-    size = 33
-    with open(actual_path, "r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("LUT_3D_SIZE"):
-                size = int(line.split()[1])
-                continue
-            if line.startswith("TITLE") or line.startswith("DOMAIN"):
-                continue
-            parts = [float(x) for x in line.split()]
-            if len(parts) == 3:
-                lut_table.extend(parts)
-
-    expected_len = size * size * size * 3
-    if len(lut_table) != expected_len:
-        raise ValueError(f"Invalid LUT data in {actual_path}: expected {expected_len} values, got {len(lut_table)}")
-
-    _CACHED_LUT = ImageFilter.Color3DLUT(size, lut_table)
-    _CACHED_LUT_PATH = actual_path
-    return _CACHED_LUT
-
-
 def prepare_rgb(img: Image.Image) -> Image.Image:
     """Ensures image is in RGB mode with alpha composited over pure white."""
     if img.mode == "RGB":
@@ -82,82 +40,29 @@ def prepare_rgb(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
-def scale_to_rmpp_geometry(img: Image.Image, config: EnhancerConfig) -> Image.Image:
-    """Scales image proportionally to reMarkable Paper Pro Option A screen dimensions."""
-    w, h = img.size
-    if h >= w:
-        # Portrait: fit within 1620 x 2160 (height target 2160)
-        scale = min(config.target_width / w, config.target_height / h)
-    else:
-        # Landscape spread: fit within 2160 x 1620
-        scale = min(config.target_height / w, config.target_width / h)
-
-    new_w = max(1, int(round(w * scale)))
-    new_h = max(1, int(round(h * scale)))
-
-    if (new_w, new_h) != (w, h):
-        return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-    return img
-
-
-def apply_edge_directed_inking(img: Image.Image) -> Image.Image:
+def process_and_save_page(img: Image.Image, dst_path: str, config: EnhancerConfig) -> str:
     """
-    Applies bilateral edge-directed inking filter:
-    1. Detects high-contrast edge gradients.
-    2. Deepens dark ink lines (lum < 0.40) to counteract pigment diffusion.
-    3. Brightens edge halos (lum >= 0.40) for crisp line separation.
-    4. Applies micro-contrast unsharp mask.
+    Enhances and encodes a single page image directly to JPEG.
+
+    Delegates proportional resizing, 3D LUT evaluation, inking arithmetic, and
+    JPEG encoding to the native Rust accelerator with GIL released for lock-free
+    multi-core parallelism.
     """
-    gray = img.convert("L")
-    edges = gray.filter(ImageFilter.FIND_EDGES)
-    edges_arr = np.array(edges, dtype=np.float32) / 255.0
-    edge_mask = edges_arr > 0.16
-
-    arr = np.array(img, dtype=np.float32) / 255.0
-    lum = 0.299 * arr[..., 0] + 0.587 * arr[..., 1] + 0.114 * arr[..., 2]
-
-    dark_ink = edge_mask & (lum < 0.40)
-    light_surround = edge_mask & (lum >= 0.40)
-
-    for c in range(3):
-        arr[..., c][dark_ink] = np.clip(arr[..., c][dark_ink] * 0.75, 0.0, 1.0)
-        arr[..., c][light_surround] = np.clip(arr[..., c][light_surround] * 1.10, 0.0, 1.0)
-
-    res = Image.fromarray((arr * 255).astype(np.uint8))
-    return res.filter(ImageFilter.UnsharpMask(radius=1.0, percent=115, threshold=3))
-
-
-def process_image(img: Image.Image, config: EnhancerConfig) -> Image.Image:
-    """Runs a single page image through the full RMPP processing pipeline."""
     rgb = prepare_rgb(img)
-
-    # 1. Scale to Option A Geometry (@ 229 PPI)
-    scaled = scale_to_rmpp_geometry(rgb, config)
-
-    # 2. 3D LUT Color Calibration
-    pil_lut = load_3d_lut(config.lut_path) if config.color_correction else None
-    if config.color_correction and pil_lut is not None:
-        corrected = scaled.filter(pil_lut)
-    else:
-        corrected = scaled
-
-    # 3. Bilateral Edge Inking Filter
-    if config.edge_inking:
-        final_img = apply_edge_directed_inking(corrected)
-    else:
-        final_img = corrected
-
-    return final_img
-
-
-def save_page_jpeg(img: Image.Image, dst_path: str, config: EnhancerConfig) -> str:
-    """Saves enhanced image to JPEG with specified quality, chroma subsampling, and DPI."""
-    img.save(
+    w, h = rgb.size
+    enhance_page_to_jpeg(
+        w,
+        h,
+        rgb.tobytes(),
         dst_path,
-        "JPEG",
         quality=config.quality,
         subsampling=config.subsampling,
-        optimize=True,
-        dpi=(config.dpi, config.dpi),
+        color_correction=config.color_correction,
+        edge_inking=config.edge_inking,
+        custom_lut_path=config.lut_path,
+        target_width=config.target_width,
+        target_height=config.target_height,
+        dpi=config.dpi,
     )
     return dst_path
+
