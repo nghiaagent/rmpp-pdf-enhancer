@@ -200,6 +200,17 @@ class TestComicInfo(unittest.TestCase):
         path = self._archive("<ComicInfo><Manga>Yes</Manga></ComicInfo>")
         self.assertEqual(reading_direction_from_comicinfo(read_comicinfo(path)), "ltr")
 
+    def test_declared_left_to_right_beats_the_rtl_default(self):
+        path = self._archive("<ComicInfo><Manga>No</Manga></ComicInfo>")
+        self.assertEqual(resolve_reading_direction("auto", path), ("ltr", "comicinfo"))
+
+    def test_undeclared_archive_falls_back_to_rtl(self):
+        path = self._archive("<ComicInfo><Title>x</Title></ComicInfo>")
+        self.assertEqual(resolve_reading_direction("auto", path), ("rtl", "default"))
+
+    def test_input_without_any_metadata_is_rtl(self):
+        self.assertEqual(resolve_reading_direction("auto", None), ("rtl", "default"))
+
     def test_explicit_flag_beats_metadata(self):
         path = self._archive("<ComicInfo><Manga>YesAndRightToLeft</Manga></ComicInfo>")
         self.assertEqual(resolve_reading_direction("ltr", path), ("ltr", "requested"))
@@ -217,7 +228,7 @@ class TestComicInfo(unittest.TestCase):
         self.assertEqual(double_pages_from_comicinfo(None), {})
         bad = self._archive("<ComicInfo><unclosed>")
         self.assertIsNone(read_comicinfo(bad))
-        self.assertEqual(resolve_reading_direction("auto", bad), ("ltr", "default"))
+        self.assertEqual(resolve_reading_direction("auto", bad), ("rtl", "default"))
 
 
 class TestChooseLayout(unittest.TestCase):

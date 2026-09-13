@@ -37,6 +37,12 @@ JOINED_NAME = re.compile(r"(\d+)\s*[-_]\s*(\d+)(?!\d)")
 LTR = "ltr"
 RTL = "rtl"
 
+# Fallback when nothing declares a direction. Right-to-left is the default
+# because the archives this tool is pointed at are overwhelmingly manga, and a
+# .cbz that carries no ComicInfo.xml is far more likely to be one than not.
+# Anything the archive actually declares still wins over this.
+DEFAULT_READING_DIRECTION = RTL
+
 
 @dataclass(frozen=True)
 class PageGroup:
@@ -165,10 +171,15 @@ def group_pages(
 
 
 def resolve_reading_direction(requested: str, archive_path: Optional[str]) -> Tuple[str, str]:
-    """Resolve ``ltr``/``rtl``/``auto`` into a direction and how it was decided."""
+    """Resolve ``ltr``/``rtl``/``auto`` into a direction and how it was decided.
+
+    Precedence: an explicit flag, then whatever the archive declares, then
+    :data:`DEFAULT_READING_DIRECTION`. A volume that says ``<Manga>No</Manga>``
+    is therefore still laid out left-to-right under the default.
+    """
     if requested in (LTR, RTL):
         return requested, "requested"
     declared = reading_direction_from_comicinfo(read_comicinfo(archive_path)) if archive_path else None
     if declared:
         return declared, "comicinfo"
-    return LTR, "default"
+    return DEFAULT_READING_DIRECTION, "default"

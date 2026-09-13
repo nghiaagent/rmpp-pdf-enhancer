@@ -222,10 +222,16 @@ does this tool: if a volume's spreads land on the wrong parity, pass
 
 ### Reading direction
 
-`--reading-direction auto` (the default) reads `ComicInfo.xml` and falls back to
-left-to-right. Under `rtl` the first page of a row sits on the right, and a
-part-filled row leaves its blank cells on the left. Pass `ltr` or `rtl` to
-override the metadata.
+`--reading-direction auto` (the default) resolves in this order:
+
+1. An explicit `--reading-direction ltr|rtl` always wins.
+2. Whatever `ComicInfo.xml` declares, so a volume marked `<Manga>No</Manga>` is
+   laid out left-to-right even under the default.
+3. **Right-to-left**, because an archive carrying no metadata at all is far more
+   likely to be manga than not.
+
+Under `rtl` the first page of a row sits on the right, and a part-filled row
+leaves its blank cells on the left.
 
 ---
 

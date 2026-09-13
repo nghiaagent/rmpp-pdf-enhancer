@@ -242,7 +242,7 @@ def main():
     )
     layout.add_argument(
         "--reading-direction", choices=["ltr", "rtl", "auto"], default="auto",
-        help="Page order within a row; auto reads ComicInfo.xml and falls back to ltr",
+        help="Page order within a row; auto reads ComicInfo.xml and falls back to rtl",
     )
     layout.add_argument(
         "--no-keep-spreads", dest="keep_spreads", action="store_false",

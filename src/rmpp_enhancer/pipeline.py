@@ -59,7 +59,7 @@ class EnhancerConfig:
     orientation: str = "auto"        # portrait | landscape | auto
     fit_mode: str = "fit"            # fit (letterbox) | fill (crop to cover)
     keep_spreads_together: bool = True
-    reading_direction: str = "auto"  # ltr | rtl | auto (auto reads ComicInfo.xml)
+    reading_direction: str = "auto"  # ltr | rtl | auto (ComicInfo.xml, else rtl)
     shift_pages: bool = False        # Offset pairing by one, for wrong-parity volumes
 
 
