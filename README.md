@@ -55,22 +55,84 @@ For more rationale, see [Architecture and color science guide](docs/architecture
 
 ---
 
+## Prerequisites
+
+Before installing or building `rmpp-pdf-enhancer`, ensure the following tools are installed:
+
+- **Python**: Python $\ge 3.9$
+- **Rust toolchain**: Rust $\ge 1.70$ (`cargo` and `rustc`) is required to compile the native PyO3 SIMD accelerator module.
+  - Install via [rustup](https://rustup.rs):
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+- **uv**: Recommended fast Python package and tool manager.
+  - Install via [astral.sh](https://docs.astral.sh/uv/):
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Or on macOS via Homebrew:
+    brew install uv
+    ```
+
+---
+
 ## Installation and execution
 
 ### Option A: Direct execution with `uvx`
-Run directly from GitHub:
+Run directly from GitHub without manual installation (requires Rust to build the native extension on first run):
 ```bash
 uvx --from git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git rmpp-pdf-enhancer "Document.pdf"
 ```
 
-### Option B: Install via `uv tool`
+### Option B: Install as a global CLI tool via `uv tool`
 Install as a persistent system-wide CLI command:
 ```bash
 # Directly from GitHub:
 uv tool install git+https://github.com/nghiaagent/rmpp-pdf-enhancer.git
 
-# Or from local clone:
-uv tool install .
+# Or from a local clone:
+git clone https://github.com/nghiaagent/rmpp-pdf-enhancer.git
+cd rmpp-pdf-enhancer
+uv tool install --force .
+```
+
+---
+
+## Building from source and development
+
+The project uses [`maturin`](https://www.maturin.rs/) as its build backend to compile the native PyO3 Rust extension module (`rmpp_enhancer._accelerator`) alongside the Python orchestration code.
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/nghiaagent/rmpp-pdf-enhancer.git
+cd rmpp-pdf-enhancer
+```
+
+### 2. Set up virtual environment
+```bash
+# Install dependencies and set up the local virtual environment:
+uv sync
+```
+
+### 3. Build the native Rust accelerator in development mode
+When developing or modifying Rust source code under `rust/src/`:
+```bash
+# Compile and install the extension in editable mode into the active virtual environment:
+uv run maturin develop
+```
+
+To build optimized release wheels:
+```bash
+uv run maturin build --release
+```
+
+### 4. Run tests and code quality checks
+```bash
+# Run the automated pytest test suite:
+uv run --with pytest pytest tests/
+
+# Run Rust linter and formatter:
+cargo clippy -- -D warnings
+cargo fmt --check
 ```
 
 ---
@@ -153,6 +215,8 @@ uv run python scripts/generate_illustration_comparisons.py
 Run the automated test suite with `uv`:
 
 ```bash
+uv run --with pytest pytest tests/
+# Or using the built-in unittest runner:
 uv run python -m unittest discover tests
 ```
 
